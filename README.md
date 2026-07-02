@@ -17,6 +17,7 @@ The current implementation uses a Qwen2.5-style decoder-only Transformer as the 
 - `v01_0_ragged_batch`: ragged request batching with `req_indptr`.
 - `v01_1_split_gqa`: same behavior as `v01_0`, with the GQA forward path split into readable phases.
 - `v02_kv_cache`: simple GQA KV cache with explicit prefill/decode phases.
+- `v03_request_states`: explicit request states for waiting, running, and finished requests.
 
 See [ROADMAP.md](ROADMAP.md) for the full planned version path.
 
@@ -39,7 +40,7 @@ python -m pip install -e ".[dev]"
 ## Example
 
 ```python
-from torchlet.v02_kv_cache.llm import LLM
+from torchlet.v03_request_states.llm import LLM
 
 llm = LLM("Qwen/Qwen2.5-0.5B-Instruct")
 outputs = llm.generate([
@@ -53,9 +54,9 @@ print(outputs)
 You can also run the module example:
 
 ```bash
-python -m torchlet.v02_kv_cache.llm
+python -m torchlet.v03_request_states.llm
 ```
 
 ## Status
 
-Torchlet is still an early educational implementation. Future versions can explore KV cache, paged attention, operator fusion, quantization, and custom CUDA/Triton kernels.
+Torchlet is still an early educational implementation. Future versions can explore continuous batching, paged attention, operator fusion, quantization, and custom CUDA/Triton kernels.
