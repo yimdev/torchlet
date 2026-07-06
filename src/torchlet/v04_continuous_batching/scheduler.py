@@ -113,8 +113,14 @@ class Scheduler:
         return finished
 
     def fail_all(self, error: Exception) -> list[Request]:
-        failed_reqs = []
+        done_reqs = []
         seen_req_ids = set()
+
+        def add_finished(req: Request):
+            if req.req_id in seen_req_ids:
+                return
+            seen_req_ids.add(req.req_id)
+            done_reqs.append(req)
 
         def add_failed(req: Request):
             if req.req_id in seen_req_ids:
@@ -122,8 +128,10 @@ class Scheduler:
             seen_req_ids.add(req.req_id)
             req.error = error
             req.state = RequestState.FINISHED
-            failed_reqs.append(req)
+            done_reqs.append(req)
 
+        for req in self.finished:
+            add_finished(req)
         for req in self.running:
             add_failed(req)
         for req in self.waiting:
@@ -138,4 +146,4 @@ class Scheduler:
         self.waiting = []
         self.running = []
         self.finished = []
-        return failed_reqs
+        return done_reqs

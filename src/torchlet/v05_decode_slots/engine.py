@@ -9,9 +9,21 @@ from .scheduler import Scheduler
 
 
 class Engine:
-    def __init__(self, model, tokenizer, device, stop_ids):
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        device,
+        stop_ids,
+        max_decode_slots: int = 4,
+        dummy_token_id: int = 0,
+    ):
         self.input_queue: asyncio.Queue[Request] = asyncio.Queue()
-        self.scheduler = Scheduler(self.input_queue)
+        self.scheduler = Scheduler(
+            self.input_queue,
+            max_decode_slots=max_decode_slots,
+            dummy_token_id=dummy_token_id,
+        )
         self.kvcache = KVCache()
         self.model = model
         self.tokenizer = tokenizer
@@ -48,19 +60,17 @@ class Engine:
         assert prefill_reqs or decode_reqs
 
         with torch.no_grad():
-            for reqs in (prefill_reqs, decode_reqs):
-                if reqs is None:
-                    continue
-                model_input = self.scheduler.build_model_input(reqs, self.device)
-
-                if model_input.flat_input_ids.numel() == 0:
-                    return False
+            if prefill_reqs:
+                model_input = self.scheduler.build_model_input(
+                    prefill_reqs, self.device
+                )
 
                 forward_params = ForwardParams(
                     req_ids=model_input.req_ids,
                     req_indptr_cpu=model_input.req_indptr_cpu,
                     position_index=model_input.position_index,
-                    is_prefill=reqs.is_prefill,
+                    active_mask_cpu=None,
+                    is_prefill=prefill_reqs.is_prefill,
                     kvcache=self.kvcache,
                 )
 
@@ -70,7 +80,31 @@ class Engine:
                     last_token_only=True,
                 )  # [batch, vocab_size]
                 gen_tok_id = self.sample(logits)  # [batch]
-                self.scheduler.process_output(reqs, gen_tok_id, self.stop_ids)
+                self.scheduler.process_output(prefill_reqs, gen_tok_id, self.stop_ids)
+
+            if decode_reqs:
+                model_input = self.scheduler.build_model_input_decode(
+                    decode_reqs, self.device
+                )
+
+                forward_params = ForwardParams(
+                    req_ids=model_input.req_ids,
+                    req_indptr_cpu=model_input.req_indptr_cpu,
+                    position_index=model_input.position_index,
+                    active_mask_cpu=model_input.active_mask_cpu,
+                    is_prefill=decode_reqs.is_prefill,
+                    kvcache=self.kvcache,
+                )
+
+                logits = self.model.forward(
+                    model_input.flat_input_ids,
+                    forward_params,
+                    last_token_only=True,
+                )  # [batch, vocab_size]
+                gen_tok_id = self.sample(logits)  # [batch]
+                self.scheduler.process_output_decode(
+                    decode_reqs, gen_tok_id, self.stop_ids
+                )
         return True
 
     def sample(self, logits: Tensor):
