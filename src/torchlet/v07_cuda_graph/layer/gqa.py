@@ -66,13 +66,12 @@ class GroupedQueryAttention(nn.Module):
     ) -> Tensor:
         # (num_heads, seq_len, head_dim), (num_kv_heads, seq_len, head_dim)
         queries, keys = self._apply_rope(queries, keys, forward_params.position_index)
-        forward_params.kvcache.append(
+        forward_params.kvcache.append_prefill(
             keys,
             values,
             self.layer_idx,
-            forward_params.req_ids,
+            forward_params.slot_ids_cpu,
             forward_params.req_indptr_cpu,
-            None,
         )
         # tensor shape: (total_tokens_num, d_out)
         context_vec = self._forward_ragged_attention(
@@ -93,17 +92,16 @@ class GroupedQueryAttention(nn.Module):
         # Apply RoPE to the new decode tokens before appending K to the cache.
         queries, keys = self._apply_rope(queries, keys, forward_params.position_index)
 
-        forward_params.kvcache.append(
+        forward_params.kvcache.append_decode(
             keys,
             values,
             self.layer_idx,
-            forward_params.req_ids,
-            forward_params.req_indptr_cpu,
-            forward_params.active_mask_cpu,
+            forward_params.position_index,
+            forward_params.active_mask,
         )
 
         # tensor shape: (req_num, d_out)
-        context_vec = self._forward_ragged_attention_decode(
+        context_vec = self._forward_slot_attention_decode(
             queries,
             forward_params,
         )
@@ -210,7 +208,7 @@ class GroupedQueryAttention(nn.Module):
         context_vec = torch.cat(context_vec_list, dim=0)
         return context_vec.contiguous().view(total_tokens_num, self.d_out)
 
-    def _forward_ragged_attention_decode(
+    def _forward_slot_attention_decode(
         self,
         queries: Tensor,
         forward_params: ForwardParams,
@@ -221,30 +219,39 @@ class GroupedQueryAttention(nn.Module):
         queries: (num_heads, req_num, head_dim)
         """
         num_kv_groups = self.num_heads // self.num_kv_heads
+
+        max_slots = forward_params.kvcache.max_decode_slots
+
         # Group query heads by the KV head they attend to:
         # (num_heads, req_num, head_dim)
         # -> (num_kv_heads, num_kv_groups, req_num, head_dim)
-        req_num = len(forward_params.req_ids)
-        queries = queries.view(self.num_kv_heads, num_kv_groups, req_num, self.head_dim)
+        queries = queries.view(
+            self.num_kv_heads, num_kv_groups, max_slots, self.head_dim
+        )
 
-        context_vec = queries.new_zeros(req_num, self.d_out)
-        for i, reqid in enumerate(forward_params.req_ids):
-            if (
-                forward_params.active_mask_cpu is not None
-                and not forward_params.active_mask_cpu[i]
-            ):
-                continue
+        context_vec = queries.new_zeros(max_slots, self.d_out)
+        for slot in range(max_slots):
             # (num_kv_heads, num_kv_groups, 1, head_dim)
-            sub_q = queries[:, :, i : i + 1, :]
+            sub_q = queries[:, :, slot : slot + 1, :]
+
             # Cached K/V for this request:
-            # (num_kv_heads, cached_seq_len, head_dim)
-            sub_k, sub_v = forward_params.kvcache.get(reqid, self.layer_idx)
-            # (num_kv_heads, 1, cached_seq_len, head_dim)
+            # (num_kv_heads, max_seq_len, head_dim)
+            sub_k, sub_v = forward_params.kvcache.get_slot(self.layer_idx, slot)
+            # (num_kv_heads, 1, max_seq_len, head_dim)
             sub_k = sub_k.unsqueeze(1)
             sub_v = sub_v.unsqueeze(1)
 
-            # Dot product per head: (num_kv_heads, num_kv_groups, 1, cached_seq_len)
+            # Dot product per head: (num_kv_heads, num_kv_groups, 1, max_seq_len)
             attn_scores = sub_q @ sub_k.transpose(2, 3)
+
+            valid = (
+                forward_params.kvcache.cache_positions
+                <= forward_params.position_index[slot]
+            )
+            attn_scores = attn_scores.masked_fill(
+                ~valid.view(1, 1, 1, forward_params.kvcache.max_seq_len),
+                torch.finfo(attn_scores.dtype).min,
+            )
 
             attn_weights = torch.softmax(attn_scores / sub_k.shape[-1] ** 0.5, dim=-1)
 
@@ -254,5 +261,7 @@ class GroupedQueryAttention(nn.Module):
                 .view(self.num_heads, 1, self.head_dim)
                 .transpose(0, 1)
             )
-            context_vec[i] = req_context_vec.contiguous().view(self.d_out)
+
+            active = forward_params.active_mask[slot].to(req_context_vec.dtype)
+            context_vec[slot] = req_context_vec.contiguous().view(self.d_out) * active
         return context_vec

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 @dataclass
 class ForwardParams:
-    req_ids: list[str]
     req_indptr_cpu: Tensor
     position_index: Tensor
-    active_mask_cpu: None | list[bool]
+    slot_ids_cpu: None | list[int]
+    active_mask: None | Tensor
     is_prefill: bool
     kvcache: KVCache

@@ -13,11 +13,11 @@ class ScheduleReqs:
 
 @dataclass
 class ModelInput:
-    req_ids: list[str]
     flat_input_ids: Tensor
     req_indptr_cpu: Tensor
     position_index: Tensor
-    active_mask_cpu: None | list[bool]
+    slot_ids_cpu: None | list[int]
+    active_mask: None | Tensor
 
 
 class Scheduler:
@@ -27,6 +27,7 @@ class Scheduler:
         device,
         max_decode_slots: int = 4,
         dummy_token_id: int = 0,
+        max_seq_len: int | None = None,
     ):
         if max_decode_slots <= 0:
             raise ValueError("max_decode_slots must be positive")
@@ -36,6 +37,7 @@ class Scheduler:
         self.queue = queue
         self.max_decode_slots = max_decode_slots
         self.dummy_token_id = dummy_token_id
+        self.max_seq_len = max_seq_len
         self.req_to_slot = dict()
         self.free_slots = [i for i in range(0, self.max_decode_slots)]
 
@@ -48,12 +50,28 @@ class Scheduler:
         self.decode_position_index = torch.zeros(
             self.max_decode_slots, dtype=torch.long, device=device
         )
-        self.decode_req_ids = [""] * self.max_decode_slots
-        self.decode_active_mask_cpu = [False] * self.max_decode_slots
+        self.decode_active_mask = torch.zeros(
+            self.max_decode_slots, dtype=torch.bool, device=device
+        )
 
     async def add_requests(self, requests: list[Request]):
         for req in requests:
+            self._validate_request(req)
+        for req in requests:
             await self.queue.put(req)
+
+    def _validate_request(self, req: Request):
+        if req.max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        if self.max_seq_len is None:
+            return
+
+        required_positions = len(req.input_tokens) + req.max_new_tokens - 1
+        if required_positions > self.max_seq_len:
+            raise ValueError(
+                f"request {req.req_id} requires {required_positions} cache positions, "
+                f"but max_seq_len is {self.max_seq_len}"
+            )
 
     async def schedule(self) -> tuple[ScheduleReqs | None, ScheduleReqs | None]:
         decode_reqs = None
@@ -101,8 +119,6 @@ class Scheduler:
             [torch.tensor([0], dtype=torch.long), torch.cumsum(input_lens, 0)]
         )
 
-        req_ids = [req.req_id for req in schedule_reqs.requests]
-
         total_tokens_num = req_indptr_cpu[-1]
         req_len_cpu = req_indptr_cpu[1:] - req_indptr_cpu[:-1]
         # position_index shape: (total_tokens_num,)
@@ -111,28 +127,33 @@ class Scheduler:
             req_len_cpu,
         )
         position_index = position_index.to(device)
-        return ModelInput(req_ids, flat_input, req_indptr_cpu, position_index, None)
+        slot_ids_cpu = [self.req_to_slot[req.req_id] for req in schedule_reqs.requests]
+        return ModelInput(
+            flat_input, req_indptr_cpu, position_index, slot_ids_cpu, None
+        )
 
     def build_model_input_decode(self, schedule_reqs: ScheduleReqs) -> ModelInput:
         self.decode_input.fill_(self.dummy_token_id)
         self.decode_position_index.zero_()
-        for slot_id in range(self.max_decode_slots):
-            self.decode_req_ids[slot_id] = ""
-            self.decode_active_mask_cpu[slot_id] = False
+        self.decode_active_mask.zero_()
 
         for req in schedule_reqs.requests:
             slot_id = self.req_to_slot[req.req_id]
+            if self.max_seq_len is not None and req.computed_tokens >= self.max_seq_len:
+                raise ValueError(
+                    f"request {req.req_id} decode position {req.computed_tokens} "
+                    f"must be less than max_seq_len {self.max_seq_len}"
+                )
             self.decode_input[slot_id] = req.input_tokens[0]
-            self.decode_req_ids[slot_id] = req.req_id
             self.decode_position_index[slot_id] = req.computed_tokens
-            self.decode_active_mask_cpu[slot_id] = True
+            self.decode_active_mask[slot_id] = True
 
         return ModelInput(
-            self.decode_req_ids,
             self.decode_input,
             self.decode_req_indptr_cpu,
             self.decode_position_index,
-            self.decode_active_mask_cpu,
+            None,
+            self.decode_active_mask,
         )
 
     def _apply_token(self, req: Request, tok: int, stop_ids):

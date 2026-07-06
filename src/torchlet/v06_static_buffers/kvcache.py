@@ -22,11 +22,11 @@ class KVCache:
         layer_idx: int,
         req_ids: list[str],
         req_indptr_cpu: Tensor,
-        active_mask_cpu: None | list[int],
+        active_mask_cpu: None | list[bool],
     ):
         req_indptr_list = req_indptr_cpu.tolist()
         for i, reqid in enumerate(req_ids):
-            if active_mask_cpu is not None and active_mask_cpu[i] == 0:
+            if active_mask_cpu is not None and not active_mask_cpu[i]:
                 continue
             start = req_indptr_list[i]
             end = req_indptr_list[i + 1]
