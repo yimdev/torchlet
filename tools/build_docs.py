@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,22 @@ CONTENT = DOCS / "content"
 ASSETS = DOCS / "assets"
 VERSION_CONTENT = CONTENT / "versions"
 SRC = ROOT / "src" / "torchlet"
+
+DEFAULT_COMPARE_FILES = {
+    "v00_full_recompute": "layer/gqa.py",
+    "v01_0_ragged_batch": "layer/gqa.py",
+    "v01_1_split_gqa": "layer/gqa.py",
+    "v02_kv_cache": "layer/gqa.py",
+    "v03_request_states": "scheduler.py",
+    "v04_continuous_batching": "scheduler.py",
+    "v05_decode_slots": "scheduler.py",
+    "v06_static_buffers": "scheduler.py",
+    "v07_cuda_graph": "engine.py",
+    "v08_paged_gqa_py": "kvcache.py",
+    "v09_triton_basics": "layer/gqa.py",
+    "v10_triton_paged_gqa": "layer/gqa.py",
+    "v11_cuda_graph_triton_paged": "engine.py",
+}
 
 
 def slug_to_title(slug: str) -> str:
@@ -105,6 +122,61 @@ def read_versions() -> list[dict[str, str]]:
         return json.load(file)
 
 
+def compare_href(prefix: str, left: str, right: str, file_path: str) -> str:
+    return (
+        f"{prefix}/compare/?left={quote(left)}&right={quote(right)}"
+        f"&file={quote(file_path, safe='')}"
+    )
+
+
+def action_link(href: str, label: str, class_name: str = "action-link") -> str:
+    return f'<a class="{class_name}" href="{href}">{html.escape(label)}</a>'
+
+
+def version_actions(
+    version: dict[str, str],
+    previous: dict[str, str] | None,
+    versions: list[dict[str, str]],
+) -> str:
+    links = []
+    prefix = "../.."
+    version_id = version["id"]
+    file_path = DEFAULT_COMPARE_FILES.get(version_id, "layer/gqa.py")
+
+    if (
+        previous
+        and version["status"] == "implemented"
+        and previous["status"] == "implemented"
+    ):
+        links.append(
+            action_link(
+                compare_href(prefix, previous["id"], version_id, file_path),
+                f"Compare {previous['id']} -> {version_id}",
+            )
+        )
+    elif version["status"] == "implemented":
+        links.append(
+            action_link(
+                compare_href(prefix, version_id, version_id, file_path),
+                f"Open {version_id} in code compare",
+            )
+        )
+    else:
+        implemented = [item for item in versions if item["status"] == "implemented"]
+        if len(implemented) >= 2:
+            left = implemented[-2]["id"]
+            right = implemented[-1]["id"]
+            links.append(
+                action_link(
+                    compare_href(prefix, left, right, "layer/gqa.py"),
+                    "Compare latest implemented versions",
+                )
+            )
+
+    links.append(action_link(f"{prefix}/compare/", "Open compare tool", "secondary-link"))
+    return '<div class="doc-actions">' + "".join(links) + "</div>"
+
+
 def page_shell(
     *,
     title: str,
@@ -182,8 +254,15 @@ def build_index(out_dir: Path, versions: list[dict[str, str]]) -> None:
             f"<p>{html.escape(version['theme'])}</p>"
             "</a>"
         )
+    intro_actions = (
+        '<div class="doc-actions">'
+        + action_link("versions/v00_full_recompute/", "Start walkthrough")
+        + action_link("compare/", "Open code compare", "secondary-link")
+        + "</div>"
+    )
     body = (
         content
+        + intro_actions
         + '<p class="lede">Each step keeps the previous implementation visible, '
         + "so the codebase can be read as a sequence of small design pressures.</p>"
         + '<section class="version-grid">'
@@ -196,9 +275,15 @@ def build_index(out_dir: Path, versions: list[dict[str, str]]) -> None:
 
 
 def build_version_pages(out_dir: Path, versions: list[dict[str, str]]) -> None:
-    for version in versions:
+    for index, version in enumerate(versions):
         source = VERSION_CONTENT / f"{version['id']}.md"
         body = render_markdown(source.read_text())
+        actions = version_actions(
+            version,
+            versions[index - 1] if index > 0 else None,
+            versions,
+        )
+        body = body.replace("</h1>", f"</h1>{actions}", 1)
         body = (
             f'<span class="badge {version["status"]}">{version["status"]}</span>'
             + body

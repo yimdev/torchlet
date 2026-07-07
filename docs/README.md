@@ -50,3 +50,7 @@ The included workflow builds the docs on pushes to `main` and deploys
 `docs/_site` through GitHub Pages.
 
 In the repository settings, set Pages to use GitHub Actions as the source.
+
+If the deployed page shows this README instead of the generated walkthrough
+site, the repository is still using the branch-based Pages source. Change
+Settings -> Pages -> Source to GitHub Actions, then rerun the docs workflow.

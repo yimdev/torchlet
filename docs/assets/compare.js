@@ -1,5 +1,7 @@
 (function () {
   const payload = window.TORCHLET_CODE;
+  const params = new URLSearchParams(window.location.search);
+
   const leftVersion = document.querySelector("#leftVersion");
   const rightVersion = document.querySelector("#rightVersion");
   const filePath = document.querySelector("#filePath");
@@ -9,6 +11,14 @@
   const rightMeta = document.querySelector("#rightMeta");
   const leftCode = document.querySelector("#leftCode");
   const rightCode = document.querySelector("#rightCode");
+
+  function hasVersion(id) {
+    return payload.versions.some((version) => version.id === id);
+  }
+
+  function hasFile(path) {
+    return payload.files.includes(path);
+  }
 
   function option(value, label) {
     const item = document.createElement("option");
@@ -27,11 +37,19 @@
   }
 
   const lastIndex = payload.versions.length - 1;
-  leftVersion.value = payload.versions[Math.max(0, lastIndex - 1)].id;
-  rightVersion.value = payload.versions[lastIndex].id;
-  filePath.value = payload.files.includes("layer/gqa.py")
+  const defaultLeft = payload.versions[Math.max(0, lastIndex - 1)].id;
+  const defaultRight = payload.versions[lastIndex].id;
+  const defaultFile = payload.files.includes("layer/gqa.py")
     ? "layer/gqa.py"
     : payload.files[0];
+
+  const requestedLeft = params.get("left");
+  const requestedRight = params.get("right");
+  const requestedFile = params.get("file");
+
+  leftVersion.value = hasVersion(requestedLeft) ? requestedLeft : defaultLeft;
+  rightVersion.value = hasVersion(requestedRight) ? requestedRight : defaultRight;
+  filePath.value = hasFile(requestedFile) ? requestedFile : defaultFile;
 
   function escapeHtml(value) {
     return value
@@ -69,6 +87,9 @@
 
     renderCode(leftCode, payload.code[left] && payload.code[left][path]);
     renderCode(rightCode, payload.code[right] && payload.code[right][path]);
+
+    const nextParams = new URLSearchParams({ left, right, file: path });
+    window.history.replaceState(null, "", `?${nextParams.toString()}`);
   }
 
   leftVersion.addEventListener("change", render);

@@ -198,6 +198,39 @@ a {
   margin-top: 30px;
 }
 
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0 28px;
+}
+
+.action-link,
+.secondary-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.action-link {
+  background: var(--accent);
+  color: #fff;
+}
+
+.action-link:hover {
+  background: var(--accent-strong);
+}
+
+.secondary-link {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent-strong);
+}
+
 .version-card {
   display: grid;
   gap: 8px;
