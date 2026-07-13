@@ -26,6 +26,6 @@ This separates two concerns:
 - `llm.py` for the public generation interface.
 - `layer/gqa.py` to confirm attention behavior is still the same cache idea.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 The engine is still small and synchronous in spirit. The value here is not production scheduling policy; it is making request state visible before requests start entering and leaving the batch dynamically.

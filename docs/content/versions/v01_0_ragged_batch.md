@@ -27,6 +27,6 @@ GQA loops over those slices, applies causal attention inside each request, and w
 - `llm.py` for batched input construction.
 - `layer/gqa.py` for per-request attention over a flat buffer.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 The Python loop over requests is intentionally visible. It is not the fastest approach, but it makes the ragged layout concrete before later versions add caching and scheduling.

@@ -25,6 +25,6 @@ The important change is that the batch is now a stream of request state transiti
 - `request.py` for lifecycle fields.
 - `kvcache.py` for cache ownership while requests move through the engine.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
-The policy is intentionally simple. It teaches the mechanics of continuous batching before introducing fixed slots and static buffers.
+The policy is intentionally simple. It keeps the mechanics of continuous batching explicit before fixed slots and static buffers are introduced.

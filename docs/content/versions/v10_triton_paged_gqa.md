@@ -26,6 +26,6 @@ request slot + logical block -> physical block -> K/V tile
 - The cache layout against `v08_paged_gqa_py/kvcache.py`.
 - The scheduler block table construction against the v08 version.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 The kernel should initially optimize for correctness and shape clarity. Aggressive fusion and autotuning can wait until the paged attention mapping is obvious.

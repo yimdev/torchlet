@@ -29,6 +29,6 @@ Attention reconstructs the request's logical K/V order by following the table.
 - `layer/gqa.py` for PyTorch paged attention reads.
 - `engine.py` for how paged cache coexists with CUDA Graph decode.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 The implementation still uses Python loops and PyTorch gathers so the mapping stays visible. The next major step is to move this same idea into Triton kernels.

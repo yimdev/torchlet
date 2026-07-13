@@ -27,6 +27,6 @@ Giving those steps names lowers the cost of comparing future diffs.
 
 - `layer/gqa.py` against `v01_0_ragged_batch/layer/gqa.py`.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
-This version is a readability checkpoint, not a performance checkpoint. It teaches that some version steps are valuable because they make the next change understandable.
+This version is a readability checkpoint, not a performance checkpoint. Some Version steps are valuable because they make the next change understandable.

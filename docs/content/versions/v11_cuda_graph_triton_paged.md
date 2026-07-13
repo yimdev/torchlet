@@ -28,6 +28,6 @@ The captured operations stay the same; the data they read changes in place.
 - The v11 Triton paged attention path against the v10 kernel.
 - Static buffer and block-table handling against `v08_paged_gqa_py/scheduler.py`.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 This is the most constraint-heavy core version. The documentation should call out which constraints come from CUDA Graph, which come from Triton launch shape, and which come from paged cache layout.

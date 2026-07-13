@@ -1,266 +1,603 @@
 (function () {
+  "use strict";
+
   const payload = window.TORCHLET_CODE;
+  const core = window.TorchletCompareCore;
   const params = new URLSearchParams(window.location.search);
 
-  const leftVersion = document.querySelector("#leftVersion");
-  const rightVersion = document.querySelector("#rightVersion");
-  const filePath = document.querySelector("#filePath");
-  const leftTitle = document.querySelector("#leftTitle");
-  const rightTitle = document.querySelector("#rightTitle");
-  const leftMeta = document.querySelector("#leftMeta");
-  const rightMeta = document.querySelector("#rightMeta");
-  const diffSummary = document.querySelector("#diffSummary");
-  const diffView = document.querySelector("#diffView");
+  const elements = {
+    allFiles: document.querySelector("#allFiles"),
+    baseVersion: document.querySelector("#baseVersion"),
+    changedFilesOnly: document.querySelector("#changedFilesOnly"),
+    changePosition: document.querySelector("#changePosition"),
+    diffSummary: document.querySelector("#diffSummary"),
+    diffView: document.querySelector("#diffView"),
+    evolutionSummary: document.querySelector("#evolutionSummary"),
+    expandAll: document.querySelector("#expandAll"),
+    fileNav: document.querySelector("#fileNav"),
+    filePathTitle: document.querySelector("#filePathTitle"),
+    fileStatus: document.querySelector("#fileStatus"),
+    fileSummary: document.querySelector("#fileSummary"),
+    nextChange: document.querySelector("#nextChange"),
+    nextPair: document.querySelector("#nextPair"),
+    previousChange: document.querySelector("#previousChange"),
+    previousPair: document.querySelector("#previousPair"),
+    splitView: document.querySelector("#splitView"),
+    targetVersion: document.querySelector("#targetVersion"),
+    unifiedView: document.querySelector("#unifiedView"),
+  };
 
-  if (!payload) {
-    diffSummary.textContent = "data missing";
-    diffView.innerHTML =
-      '<div class="empty-code">Code data did not load. Refresh the page or check data/code.js.</div>';
+  if (!payload || !core) {
+    elements.diffSummary.textContent = "Data unavailable";
+    elements.diffView.innerHTML =
+      '<div class="empty-code">Comparison data did not load.</div>';
     return;
   }
 
-  function hasVersion(id) {
-    return payload.versions.some((version) => version.id === id);
+  function readSavedView() {
+    try {
+      return window.localStorage.getItem("torchlet-diff-view");
+    } catch (_error) {
+      return null;
+    }
   }
 
-  function hasFile(path) {
-    return payload.files.includes(path);
+  function saveView(view) {
+    try {
+      window.localStorage.setItem("torchlet-diff-view", view);
+    } catch (_error) {
+      // Some browsers restrict storage for pages opened directly from disk.
+    }
   }
 
-  function option(value, label) {
-    const item = document.createElement("option");
-    item.value = value;
-    item.textContent = label;
-    return item;
-  }
-
-  for (const version of payload.versions) {
-    leftVersion.appendChild(option(version.id, version.id));
-    rightVersion.appendChild(option(version.id, version.id));
-  }
-
-  for (const path of payload.files) {
-    filePath.appendChild(option(path, path));
-  }
-
-  const lastIndex = payload.versions.length - 1;
-  const defaultLeft = payload.versions[Math.max(0, lastIndex - 1)].id;
-  const defaultRight = payload.versions[lastIndex].id;
-  const defaultFile = payload.files.includes("layer/gqa.py")
-    ? "layer/gqa.py"
-    : payload.files[0];
-
-  const requestedLeft = params.get("left");
-  const requestedRight = params.get("right");
-  const requestedFile = params.get("file");
-
-  leftVersion.value = hasVersion(requestedLeft) ? requestedLeft : defaultLeft;
-  rightVersion.value = hasVersion(requestedRight) ? requestedRight : defaultRight;
-  filePath.value = hasFile(requestedFile) ? requestedFile : defaultFile;
+  const requestedPair = core.resolveVersionPair(
+    payload,
+    params.get("base"),
+    params.get("target")
+  );
+  const requestedHunk = Math.max(
+    0,
+    Number.parseInt(params.get("change") || "0", 10)
+  );
+  let state = {
+    baseId: requestedPair.baseId,
+    targetId: requestedPair.targetId,
+    comparison: null,
+    currentFile: null,
+    currentHunk: requestedHunk,
+    expandedFolds: new Set(),
+    showAllFiles: false,
+    view:
+      params.get("view") === "unified" ||
+      (!params.has("view") && readSavedView() === "unified")
+        ? "unified"
+        : "split",
+  };
+  let requestedFile = params.get("file");
 
   function escapeHtml(value) {
-    return value
+    return String(value)
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
   }
 
-  function splitLines(code) {
-    if (code === undefined) {
-      return [];
-    }
-    if (code === "") {
-      return [""];
-    }
-    return code.endsWith("\n") ? code.slice(0, -1).split("\n") : code.split("\n");
+  function versionById(versionId) {
+    return payload.versions.find((version) => version.id === versionId);
   }
 
-  function buildRawDiff(leftLines, rightLines) {
-    const leftLength = leftLines.length;
-    const rightLength = rightLines.length;
-    const dp = Array.from({ length: leftLength + 1 }, () =>
-      Array(rightLength + 1).fill(0)
+  function versionLabel(version) {
+    return `${version.id} · ${version.title}`;
+  }
+
+  function createOption(version) {
+    const option = document.createElement("option");
+    option.value = version.id;
+    option.textContent = versionLabel(version);
+    return option;
+  }
+
+  function replaceOptions(select, versions, selectedId) {
+    select.replaceChildren(...versions.map(createOption));
+    select.value = selectedId;
+  }
+
+  function renderVersionControls() {
+    replaceOptions(
+      elements.baseVersion,
+      payload.versions.slice(0, -1),
+      state.baseId
+    );
+    replaceOptions(
+      elements.targetVersion,
+      core.laterVersions(payload, state.baseId),
+      state.targetId
     );
 
-    for (let i = leftLength - 1; i >= 0; i -= 1) {
-      for (let j = rightLength - 1; j >= 0; j -= 1) {
-        if (leftLines[i] === rightLines[j]) {
-          dp[i][j] = dp[i + 1][j + 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-        }
-      }
-    }
-
-    const ops = [];
-    let i = 0;
-    let j = 0;
-    while (i < leftLength && j < rightLength) {
-      if (leftLines[i] === rightLines[j]) {
-        ops.push({
-          kind: "equal",
-          leftNo: i + 1,
-          rightNo: j + 1,
-          leftText: leftLines[i],
-          rightText: rightLines[j],
-        });
-        i += 1;
-        j += 1;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        ops.push({
-          kind: "delete",
-          leftNo: i + 1,
-          leftText: leftLines[i],
-        });
-        i += 1;
-      } else {
-        ops.push({
-          kind: "add",
-          rightNo: j + 1,
-          rightText: rightLines[j],
-        });
-        j += 1;
-      }
-    }
-
-    while (i < leftLength) {
-      ops.push({
-        kind: "delete",
-        leftNo: i + 1,
-        leftText: leftLines[i],
-      });
-      i += 1;
-    }
-
-    while (j < rightLength) {
-      ops.push({
-        kind: "add",
-        rightNo: j + 1,
-        rightText: rightLines[j],
-      });
-      j += 1;
-    }
-
-    return ops;
+    const baseIndex = payload.versions.findIndex(
+      (version) => version.id === state.baseId
+    );
+    const targetIndex = payload.versions.findIndex(
+      (version) => version.id === state.targetId
+    );
+    const isAdjacent = targetIndex === baseIndex + 1;
+    elements.previousPair.disabled = isAdjacent && baseIndex === 0;
+    elements.nextPair.disabled = targetIndex === payload.versions.length - 1;
   }
 
-  function buildRows(leftLines, rightLines) {
-    const ops = buildRawDiff(leftLines, rightLines);
-    const rows = [];
-    let added = 0;
-    let deleted = 0;
-    let index = 0;
+  function renderEvolutionSummary() {
+    const baseIndex = payload.versions.findIndex(
+      (version) => version.id === state.baseId
+    );
+    const targetIndex = payload.versions.findIndex(
+      (version) => version.id === state.targetId
+    );
+    const target = payload.versions[targetIndex];
+    const stages = payload.versions.slice(baseIndex + 1, targetIndex + 1);
+    const targetLink = `../versions/${encodeURIComponent(target.id)}/`;
+    const rationale = target.rationale || target.theme;
 
-    while (index < ops.length) {
-      const op = ops[index];
-      if (op.kind === "equal") {
-        rows.push(op);
-        index += 1;
-        continue;
-      }
-
-      const deletes = [];
-      const adds = [];
-      while (index < ops.length && ops[index].kind !== "equal") {
-        if (ops[index].kind === "delete") {
-          deletes.push(ops[index]);
-        } else {
-          adds.push(ops[index]);
-        }
-        index += 1;
-      }
-
-      deleted += deletes.length;
-      added += adds.length;
-      const maxRows = Math.max(deletes.length, adds.length);
-      for (let offset = 0; offset < maxRows; offset += 1) {
-        const left = deletes[offset];
-        const right = adds[offset];
-        if (left && right) {
-          rows.push({
-            kind: "change",
-            leftNo: left.leftNo,
-            rightNo: right.rightNo,
-            leftText: left.leftText,
-            rightText: right.rightText,
-          });
-        } else if (left) {
-          rows.push(left);
-        } else if (right) {
-          rows.push(right);
-        }
-      }
-    }
-
-    return { rows, added, deleted };
-  }
-
-  function renderLineNo(value) {
-    return value === undefined ? "" : value;
-  }
-
-  function renderDiff(leftCode, rightCode) {
-    const leftMissing = leftCode === undefined;
-    const rightMissing = rightCode === undefined;
-    if (leftMissing && rightMissing) {
-      diffSummary.textContent = "file missing";
-      diffView.innerHTML = '<div class="empty-code">This file does not exist.</div>';
+    if (stages.length === 1) {
+      elements.evolutionSummary.innerHTML = `
+        <div>
+          <span class="summary-label">Evolution summary</span>
+          <strong>${escapeHtml(target.title)}</strong>
+          <p>${escapeHtml(rationale)}</p>
+        </div>
+        <a href="${targetLink}">Open Version notes</a>`;
       return;
     }
 
-    const leftLines = splitLines(leftCode);
-    const rightLines = splitLines(rightCode);
-    const { rows, added, deleted } = buildRows(leftLines, rightLines);
+    const stageLinks = stages
+      .map(
+        (stage) =>
+          `<li><a href="../versions/${encodeURIComponent(stage.id)}/">${escapeHtml(
+            versionLabel(stage)
+          )}</a><span>${escapeHtml(stage.theme)}</span></li>`
+      )
+      .join("");
+    elements.evolutionSummary.innerHTML = `
+      <details>
+        <summary>${stages.length} implementation stages in this comparison</summary>
+        <ol>${stageLinks}</ol>
+      </details>
+      <a href="${targetLink}">Open Target Version notes</a>`;
+  }
 
-    diffSummary.innerHTML =
-      `<span class="diff-count add">+${added}</span>` +
-      `<span class="diff-count delete">-${deleted}</span>`;
+  function statusLabel(status) {
+    return {
+      added: "Added",
+      deleted: "Deleted",
+      modified: "Modified",
+      unchanged: "Unchanged",
+    }[status];
+  }
 
-    const renderedRows = rows
-      .map((row) => {
-        const leftMarker = row.kind === "add" ? "" : row.kind === "equal" ? "" : "-";
-        const rightMarker = row.kind === "delete" ? "" : row.kind === "equal" ? "" : "+";
-        const leftText = row.kind === "add" ? "" : row.leftText;
-        const rightText = row.kind === "delete" ? "" : row.rightText;
-        return `<tr class="diff-row diff-${row.kind}">
-          <td class="diff-line-no old">${renderLineNo(row.leftNo)}</td>
-          <td class="diff-marker old">${leftMarker}</td>
-          <td class="diff-code old">${escapeHtml(leftText || "")}</td>
-          <td class="diff-line-no new">${renderLineNo(row.rightNo)}</td>
-          <td class="diff-marker new">${rightMarker}</td>
-          <td class="diff-code new">${escapeHtml(rightText || "")}</td>
-        </tr>`;
+  function groupFiles(files) {
+    const groups = new Map();
+    for (const file of files) {
+      const separator = file.path.lastIndexOf("/");
+      const directory = separator === -1 ? "Root" : file.path.slice(0, separator);
+      const name = separator === -1 ? file.path : file.path.slice(separator + 1);
+      if (!groups.has(directory)) {
+        groups.set(directory, []);
+      }
+      groups.get(directory).push({ ...file, name });
+    }
+    return groups;
+  }
+
+  function renderFileNav() {
+    const allFiles = state.comparison.files;
+    const visibleFiles = state.showAllFiles
+      ? allFiles
+      : allFiles.filter((file) => file.status !== "unchanged");
+    const changedCount = allFiles.filter(
+      (file) => file.status !== "unchanged"
+    ).length;
+    elements.fileSummary.textContent = `${changedCount} changed · ${allFiles.length} total`;
+    elements.changedFilesOnly.setAttribute(
+      "aria-pressed",
+      String(!state.showAllFiles)
+    );
+    elements.allFiles.setAttribute("aria-pressed", String(state.showAllFiles));
+
+    if (visibleFiles.length === 0) {
+      elements.fileNav.innerHTML =
+        '<p class="file-empty">No code changes between these Versions.</p>';
+      return;
+    }
+
+    elements.fileNav.innerHTML = Array.from(groupFiles(visibleFiles))
+      .map(([directory, files]) => {
+        const items = files
+          .map((file) => {
+            const current = file.path === state.currentFile.path;
+            const statusCode = {
+              added: "A",
+              deleted: "D",
+              modified: "M",
+              unchanged: "·",
+            }[file.status];
+            return `<button class="file-item file-${file.status}" type="button"
+              data-file="${escapeHtml(file.path)}"${
+                current ? ' aria-current="true"' : ""
+              }>
+              <span class="file-status-code">${statusCode}</span>
+              <span class="file-name">${escapeHtml(file.name)}</span>
+              <span class="file-stats"><span class="add">+${
+                file.added
+              }</span><span class="delete">-${file.deleted}</span></span>
+            </button>`;
+          })
+          .join("");
+        return `<section class="file-group"><h3>${escapeHtml(
+          directory
+        )}</h3>${items}</section>`;
       })
       .join("");
 
-    diffView.innerHTML = `<table class="diff-table"><tbody>${renderedRows}</tbody></table>`;
-  }
-
-  function render() {
-    try {
-      const left = leftVersion.value;
-      const right = rightVersion.value;
-      const path = filePath.value;
-
-      leftTitle.textContent = left;
-      rightTitle.textContent = right;
-      const leftCode = payload.code[left] && payload.code[left][path];
-      const rightCode = payload.code[right] && payload.code[right][path];
-      leftMeta.textContent = leftCode === undefined ? `${path} missing` : path;
-      rightMeta.textContent = rightCode === undefined ? `${path} missing` : path;
-
-      renderDiff(leftCode, rightCode);
-
-      const nextParams = new URLSearchParams({ left, right, file: path });
-      window.history.replaceState(null, "", `?${nextParams.toString()}`);
-    } catch (error) {
-      diffSummary.textContent = "render error";
-      diffView.innerHTML = `<div class="empty-code">${escapeHtml(error.message)}</div>`;
+    for (const button of elements.fileNav.querySelectorAll("[data-file]")) {
+      button.addEventListener("click", () => {
+        state.currentFile = state.comparison.files.find(
+          (file) => file.path === button.dataset.file
+        );
+        state.currentHunk = 0;
+        state.expandedFolds.clear();
+        renderFileNav();
+        renderDiff();
+      });
     }
   }
 
-  leftVersion.addEventListener("change", render);
-  rightVersion.addEventListener("change", render);
-  filePath.addEventListener("change", render);
-  render();
+  const pythonKeywords = new Set([
+    "and",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "False",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "None",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "True",
+    "try",
+    "while",
+    "with",
+    "yield",
+  ]);
+
+  function syntaxClass(token) {
+    if (/^\s+$/.test(token)) return "";
+    if (/^#/.test(token)) return "syntax-comment";
+    if (/^(?:[rubf]+)?["']/.test(token)) return "syntax-string";
+    if (/^\d/.test(token)) return "syntax-number";
+    if (pythonKeywords.has(token)) return "syntax-keyword";
+    return "";
+  }
+
+  function syntaxHighlight(text) {
+    const tokens =
+      text.match(/#[^\n]*|(?:[rubf]+)?"(?:\\.|[^"\\])*"|(?:[rubf]+)?'(?:\\.|[^'\\])*'|\b[A-Za-z_]\w*\b|\b\d+(?:\.\d+)?\b|\s+|./gu) || [];
+    return tokens
+      .map((token) => {
+        const className = syntaxClass(token);
+        return className
+          ? `<span class="${className}">${escapeHtml(token)}</span>`
+          : escapeHtml(token);
+      })
+      .join("");
+  }
+
+  function renderSegments(segments, side) {
+    return segments
+      .map((segment) => {
+        const code = syntaxHighlight(segment.text);
+        return segment.changed
+          ? `<mark class="word-change ${side}">${code}</mark>`
+          : code;
+      })
+      .join("");
+  }
+
+  function lineCode(row, side) {
+    const text = side === "base" ? row.baseText : row.targetText;
+    const segments = side === "base" ? row.baseSegments : row.targetSegments;
+    return segments ? renderSegments(segments, side) : syntaxHighlight(text || "");
+  }
+
+  function displayRows(file) {
+    const rows = [];
+    for (const row of file.displayRows) {
+      if (row.kind !== "fold" || !state.expandedFolds.has(row.id)) {
+        rows.push(row);
+      } else {
+        rows.push(...file.rows.slice(row.startRow, row.endRow + 1));
+      }
+    }
+    return rows;
+  }
+
+  function hunkAttribute(row) {
+    const file = state.currentFile;
+    const hunk = file.hunks.find((item) => item.startRow === row.rowIndex);
+    return hunk ? ` id="hunk-${hunk.index}" data-hunk="${hunk.index}"` : "";
+  }
+
+  function renderFoldRow(row, columnCount) {
+    return `<tr class="diff-fold"><td colspan="${columnCount}"><button type="button" data-fold="${row.id}">Expand ${row.count} unchanged lines</button></td></tr>`;
+  }
+
+  function renderSplitRows(rows) {
+    return rows
+      .map((row) => {
+        if (row.kind === "fold") return renderFoldRow(row, 6);
+        const baseMarker = row.kind === "equal" || row.kind === "add" ? "" : "−";
+        const targetMarker =
+          row.kind === "equal" || row.kind === "delete" ? "" : "+";
+        return `<tr class="diff-row diff-${row.kind}"${hunkAttribute(row)}>
+          <td class="diff-line-no base">${row.baseNo || ""}</td>
+          <td class="diff-marker base">${baseMarker}</td>
+          <td class="diff-code base"><code>${lineCode(row, "base")}</code></td>
+          <td class="diff-line-no target">${row.targetNo || ""}</td>
+          <td class="diff-marker target">${targetMarker}</td>
+          <td class="diff-code target"><code>${lineCode(row, "target")}</code></td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  function unifiedRow(row, side, kind, marker, includeAnchor = true) {
+    const lineNo = side === "base" ? row.baseNo : row.targetNo;
+    return `<tr class="diff-row diff-${kind}"${
+      includeAnchor ? hunkAttribute(row) : ""
+    }>
+      <td class="diff-line-no base">${side === "base" ? lineNo || "" : ""}</td>
+      <td class="diff-line-no target">${side === "target" ? lineNo || "" : ""}</td>
+      <td class="diff-marker ${side}">${marker}</td>
+      <td class="diff-code ${side}"><code>${lineCode(row, side)}</code></td>
+    </tr>`;
+  }
+
+  function renderUnifiedRows(rows) {
+    return rows
+      .map((row) => {
+        if (row.kind === "fold") return renderFoldRow(row, 4);
+        if (row.kind === "change") {
+          return (
+            unifiedRow(row, "base", "delete", "−") +
+            unifiedRow(row, "target", "add", "+", false)
+          );
+        }
+        if (row.kind === "delete") return unifiedRow(row, "base", "delete", "−");
+        if (row.kind === "add") return unifiedRow(row, "target", "add", "+");
+        return `<tr class="diff-row diff-equal">
+          <td class="diff-line-no base">${row.baseNo || ""}</td>
+          <td class="diff-line-no target">${row.targetNo || ""}</td>
+          <td class="diff-marker"></td>
+          <td class="diff-code target"><code>${lineCode(row, "target")}</code></td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  function renderDiff() {
+    const file = state.currentFile;
+    if (!file) {
+      elements.filePathTitle.textContent = "No changed files";
+      elements.fileStatus.textContent = "";
+      elements.diffSummary.textContent = "0 changes";
+      elements.diffView.innerHTML =
+        '<div class="empty-code">These Versions contain the same code.</div>';
+      updateUrl();
+      return;
+    }
+
+    elements.filePathTitle.textContent = file.path;
+    elements.fileStatus.textContent = statusLabel(file.status);
+    elements.fileStatus.className = `file-status file-${file.status}`;
+    elements.diffSummary.innerHTML = `<span class="diff-count add">+${file.added}</span><span class="diff-count delete">-${file.deleted}</span>`;
+    state.currentHunk = Math.min(
+      state.currentHunk,
+      Math.max(0, file.hunks.length - 1)
+    );
+    renderChangePosition();
+
+    const rows = displayRows(file);
+    const base = versionById(state.baseId);
+    const target = versionById(state.targetId);
+    const tableHeading =
+      state.view === "split"
+        ? `<tr><th colspan="3">${escapeHtml(
+            versionLabel(base)
+          )}</th><th colspan="3">${escapeHtml(versionLabel(target))}</th></tr>`
+        : `<tr><th colspan="4">${escapeHtml(versionLabel(base))} → ${escapeHtml(
+            versionLabel(target)
+          )}</th></tr>`;
+    const renderedRows =
+      state.view === "split" ? renderSplitRows(rows) : renderUnifiedRows(rows);
+    elements.diffView.innerHTML = `<table class="diff-table diff-${state.view}"><thead>${tableHeading}</thead><tbody>${renderedRows}</tbody></table>`;
+
+    for (const button of elements.diffView.querySelectorAll("[data-fold]")) {
+      button.addEventListener("click", () => {
+        state.expandedFolds.add(button.dataset.fold);
+        renderDiff();
+      });
+    }
+    updateViewControls();
+    updateUrl();
+  }
+
+  function renderChangePosition() {
+    const hunkCount = state.currentFile ? state.currentFile.hunks.length : 0;
+    elements.changePosition.textContent = hunkCount
+      ? `${state.currentHunk + 1} / ${hunkCount} changes`
+      : "No changes";
+    elements.previousChange.disabled = hunkCount === 0 || state.currentHunk === 0;
+    elements.nextChange.disabled =
+      hunkCount === 0 || state.currentHunk === hunkCount - 1;
+    const folds = state.currentFile
+      ? state.currentFile.displayRows.filter((row) => row.kind === "fold")
+      : [];
+    elements.expandAll.disabled =
+      folds.length === 0 ||
+      folds.every((row) => state.expandedFolds.has(row.id));
+  }
+
+  function updateViewControls() {
+    elements.splitView.setAttribute("aria-pressed", String(state.view === "split"));
+    elements.unifiedView.setAttribute(
+      "aria-pressed",
+      String(state.view === "unified")
+    );
+  }
+
+  function updateUrl() {
+    const nextParams = new URLSearchParams({
+      base: state.baseId,
+      target: state.targetId,
+      view: state.view,
+      change: String(state.currentHunk),
+    });
+    if (state.currentFile) nextParams.set("file", state.currentFile.path);
+    try {
+      window.history.replaceState(null, "", `?${nextParams.toString()}`);
+    } catch (_error) {
+      // Keep offline file browsing functional if history mutation is restricted.
+    }
+  }
+
+  function selectComparison(filePath, hunkIndex = 0, restoreScroll = false) {
+    state.comparison = core.compareVersions(payload, state.baseId, state.targetId);
+    const target = versionById(state.targetId);
+    state.currentFile = core.chooseDefaultFile(
+      state.comparison,
+      target.important_file,
+      filePath
+    );
+    state.currentHunk = hunkIndex;
+    state.expandedFolds.clear();
+    renderVersionControls();
+    renderEvolutionSummary();
+    renderFileNav();
+    renderDiff();
+    if (restoreScroll && state.currentHunk > 0) {
+      window.requestAnimationFrame(() => {
+        document.querySelector(`#hunk-${state.currentHunk}`)?.scrollIntoView({
+          block: "center",
+        });
+      });
+    }
+  }
+
+  function selectPair(baseId, targetId) {
+    state.baseId = baseId;
+    state.targetId = targetId;
+    requestedFile = null;
+    selectComparison(null);
+  }
+
+  function moveToHunk(nextIndex) {
+    if (!state.currentFile || nextIndex < 0 || nextIndex >= state.currentFile.hunks.length) {
+      return;
+    }
+    state.currentHunk = nextIndex;
+    renderChangePosition();
+    updateUrl();
+    document.querySelector(`#hunk-${state.currentHunk}`)?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }
+
+  elements.baseVersion.addEventListener("change", () => {
+    const targets = core.laterVersions(payload, elements.baseVersion.value);
+    selectPair(elements.baseVersion.value, targets[0].id);
+  });
+  elements.targetVersion.addEventListener("change", () => {
+    selectPair(state.baseId, elements.targetVersion.value);
+  });
+  elements.changedFilesOnly.addEventListener("click", () => {
+    state.showAllFiles = false;
+    renderFileNav();
+  });
+  elements.allFiles.addEventListener("click", () => {
+    state.showAllFiles = true;
+    renderFileNav();
+  });
+  elements.splitView.addEventListener("click", () => {
+    state.view = "split";
+    saveView(state.view);
+    renderDiff();
+  });
+  elements.unifiedView.addEventListener("click", () => {
+    state.view = "unified";
+    saveView(state.view);
+    renderDiff();
+  });
+  elements.previousPair.addEventListener("click", () => {
+    const baseIndex = payload.versions.findIndex(
+      (version) => version.id === state.baseId
+    );
+    const targetIndex = payload.versions.findIndex(
+      (version) => version.id === state.targetId
+    );
+    if (targetIndex > baseIndex + 1) {
+      selectPair(
+        payload.versions[targetIndex - 1].id,
+        payload.versions[targetIndex].id
+      );
+    } else if (baseIndex > 0) {
+      selectPair(payload.versions[baseIndex - 1].id, payload.versions[baseIndex].id);
+    }
+  });
+  elements.nextPair.addEventListener("click", () => {
+    const targetIndex = payload.versions.findIndex(
+      (version) => version.id === state.targetId
+    );
+    if (targetIndex < payload.versions.length - 1) {
+      selectPair(payload.versions[targetIndex].id, payload.versions[targetIndex + 1].id);
+    }
+  });
+  elements.previousChange.addEventListener("click", () =>
+    moveToHunk(state.currentHunk - 1)
+  );
+  elements.nextChange.addEventListener("click", () =>
+    moveToHunk(state.currentHunk + 1)
+  );
+  elements.expandAll.addEventListener("click", () => {
+    for (const row of state.currentFile.displayRows) {
+      if (row.kind === "fold") state.expandedFolds.add(row.id);
+    }
+    renderDiff();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.target.matches("input, select, textarea, button")) return;
+    if (event.key === "[") moveToHunk(state.currentHunk - 1);
+    if (event.key === "]") moveToHunk(state.currentHunk + 1);
+  });
+
+  selectComparison(requestedFile, requestedHunk, true);
 })();

@@ -28,6 +28,6 @@ The contract is strict:
 - `kvcache.py` for fixed slot cache access.
 - `layer/gqa.py` for decode attention over static slot-shaped inputs.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
-This version shows CUDA Graph before paged KV cache exists. That keeps the graph lesson focused, but the cache layout is still not the final serving-shaped memory layout.
+This version shows CUDA Graph before paged KV cache exists. That keeps the graph constraints isolated, but the cache layout is still not the final serving-shaped memory layout.

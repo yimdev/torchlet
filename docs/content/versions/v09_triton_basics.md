@@ -4,7 +4,7 @@
 
 This planned version introduces Triton with a small GQA-adjacent kernel before replacing the full attention path.
 
-The goal is to teach Triton execution structure without mixing in the full complexity of paged attention.
+The goal is to explain Triton execution structure without mixing in the full complexity of paged attention.
 
 ## Why Introduce It
 
@@ -14,7 +14,7 @@ Jumping directly from PyTorch paged GQA to a full Triton paged attention kernel 
 
 A Triton kernel is written as a program that operates on a tile of data. Many programs run in parallel, and each program computes offsets from its program IDs.
 
-The teaching target is to make these ideas visible:
+The implementation keeps these ideas visible:
 
 - Program IDs map work to tiles.
 - Masks protect boundary loads and stores.
@@ -27,6 +27,6 @@ The teaching target is to make these ideas visible:
 - The PyTorch reference function it is checked against.
 - Any test or smoke script that compares outputs.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 This version should stay intentionally small. Its job is confidence-building, not performance heroics.

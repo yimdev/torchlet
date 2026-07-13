@@ -22,6 +22,6 @@ That makes the implementation simple and honest, but it also makes the cost grow
 - `layer/gqa.py` for the first complete GQA implementation.
 - `model/qwen2_5.py` for the model skeleton that later versions preserve.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 This version favors clarity over efficiency. It is deliberately too slow for serving, which makes the next question natural: how do we avoid recomputing historical attention state?

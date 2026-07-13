@@ -23,6 +23,6 @@ The engine can build decode tensors sized by `max_decode_slots`, while an active
 - `forward_params.py` for slot metadata.
 - `layer/gqa.py` for decode attention indexed by slot/request mapping.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 Slots add bookkeeping and may carry inactive lanes. That is the price of making the decode step more static.

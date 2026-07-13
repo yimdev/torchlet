@@ -1,12 +1,12 @@
-# Torchlet Walkthrough Docs
+# Torchlet Implementation Notes
 
-Torchlet is most useful as a guided walk through one narrow LLM inference path. The docs should make the version ladder explicit: each page says what changed, why that change exists, what principle it teaches, and which files are worth comparing.
+Torchlet preserves one narrow LLM inference path as a sequence of named implementation Versions. These notes make that sequence explicit: each page states what changed, why the change exists, which principle it demonstrates, and which files are worth comparing.
 
 ## Reader Model
 
 - The reader knows Python and basic PyTorch.
 - The reader has seen Transformer attention, but may not know serving internals.
-- The reader learns best by comparing small code versions instead of reading a monolithic final implementation.
+- The reader prefers comparing small code Versions to reading a monolithic final implementation.
 
 ## Documentation Shape
 
@@ -17,7 +17,7 @@ Torchlet is most useful as a guided walk through one narrow LLM inference path. 
 
 ## Page Contract
 
-Every version page follows the same teaching contract:
+Every Version page follows the same documentation contract:
 
 - What it introduces.
 - Why the previous version needs it.

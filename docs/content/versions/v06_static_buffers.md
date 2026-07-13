@@ -28,6 +28,6 @@ The model sees the same tensor objects each decode step, but their values descri
 - `forward_params.py` for decode metadata.
 - `kvcache.py` for cache positions used by static decode.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 This version accepts some awkward buffer plumbing so the CUDA Graph version can focus on capture and replay instead of also introducing static memory discipline.

@@ -123,9 +123,28 @@ def read_versions() -> list[dict[str, str]]:
         return json.load(file)
 
 
+def read_version_rationale(version_id: str) -> str:
+    markdown = (VERSION_CONTENT / f"{version_id}.md").read_text()
+    match = re.search(
+        r"^## Why Introduce It\s*$\n(.*?)(?=^## |\Z)",
+        markdown,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    paragraphs = [part.strip() for part in match.group(1).split("\n\n") if part.strip()]
+    if not paragraphs:
+        return ""
+    rationale = " ".join(paragraphs[0].splitlines())
+    rationale = re.sub(r"`([^`]+)`", r"\1", rationale)
+    rationale = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", rationale)
+    return rationale
+
+
 def build_asset_version(code_payload: dict[str, object]) -> str:
     digest = hashlib.sha256()
     digest.update((ASSETS / "site.css").read_bytes())
+    digest.update((ASSETS / "compare-core.js").read_bytes())
     digest.update((ASSETS / "compare.js").read_bytes())
     digest.update(json.dumps(code_payload, sort_keys=True).encode())
     return digest.hexdigest()[:12]
@@ -135,58 +154,61 @@ def versioned(path: str, asset_version: str) -> str:
     return f"{path}?v={asset_version}" if asset_version else path
 
 
-def compare_href(prefix: str, left: str, right: str, file_path: str) -> str:
+def compare_href(prefix: str, base: str, target: str, file_path: str) -> str:
     return (
-        f"{prefix}/compare/?left={quote(left)}&right={quote(right)}"
+        f"{prefix}/compare/?base={quote(base)}&target={quote(target)}"
         f"&file={quote(file_path, safe='')}"
     )
 
 
 def action_link(href: str, label: str, class_name: str = "action-link") -> str:
-    return f'<a class="{class_name}" href="{href}">{html.escape(label)}</a>'
+    return (
+        f'<a class="{class_name}" href="{html.escape(href, quote=True)}">'
+        f"{html.escape(label)}</a>"
+    )
 
 
 def version_actions(
     version: dict[str, str],
-    previous: dict[str, str] | None,
     versions: list[dict[str, str]],
 ) -> str:
     links = []
     prefix = "../.."
-    version_id = version["id"]
-    file_path = DEFAULT_COMPARE_FILES.get(version_id, "layer/gqa.py")
+    implemented = [item for item in versions if item["status"] == "implemented"]
 
-    if (
-        previous
-        and version["status"] == "implemented"
-        and previous["status"] == "implemented"
-    ):
-        links.append(
-            action_link(
-                compare_href(prefix, previous["id"], version_id, file_path),
-                f"Compare {previous['id']} -> {version_id}",
-            )
-        )
-    elif version["status"] == "implemented":
-        links.append(
-            action_link(
-                compare_href(prefix, version_id, version_id, file_path),
-                f"Open {version_id} in code compare",
-            )
-        )
-    else:
-        implemented = [item for item in versions if item["status"] == "implemented"]
-        if len(implemented) >= 2:
-            left = implemented[-2]["id"]
-            right = implemented[-1]["id"]
+    if version["status"] == "implemented" and version in implemented:
+        implemented_index = implemented.index(version)
+        if implemented_index > 0:
+            base = implemented[implemented_index - 1]
+            target = version
+        elif len(implemented) > 1:
+            base = version
+            target = implemented[1]
+        else:
+            base = None
+            target = None
+        if base and target:
+            file_path = DEFAULT_COMPARE_FILES.get(target["id"], "layer/gqa.py")
             links.append(
                 action_link(
-                    compare_href(prefix, left, right, "layer/gqa.py"),
-                    "Compare latest implemented versions",
+                    compare_href(prefix, base["id"], target["id"], file_path),
+                    f"Compare {base['id']} -> {target['id']}",
                 )
             )
+    elif len(implemented) >= 2:
+        base = implemented[-2]
+        target = implemented[-1]
+        file_path = DEFAULT_COMPARE_FILES.get(target["id"], "layer/gqa.py")
+        links.append(
+            action_link(
+                compare_href(prefix, base["id"], target["id"], file_path),
+                "Compare latest implemented Versions",
+            )
+        )
 
-    links.append(action_link(f"{prefix}/compare/", "Open compare tool", "secondary-link"))
+    links.append(
+        action_link(f"{prefix}/compare/", "Open compare tool", "secondary-link")
+    )
     return '<div class="doc-actions">' + "".join(links) + "</div>"
 
 
@@ -200,6 +222,7 @@ def page_shell(
     extra_head: str = "",
     extra_body: str = "",
     asset_version: str = "",
+    table_of_contents: str = "",
 ) -> str:
     nav_items = []
     for version in versions:
@@ -209,14 +232,70 @@ def page_shell(
         if current == "compare":
             href = f"../versions/{version['id']}/"
         aria = ' aria-current="page"' if current == version["id"] else ""
+        version_label = f'{version["id"]} · {version["title"]}'
         nav_items.append(
-            f'<a class="version-link" href="{href}"{aria}>'
-            f"{version['id']}<span class=\"status\">{version['status']}</span></a>"
+            f'<a class="version-link" href="{href}" '
+            f'title="{html.escape(version_label, quote=True)}"{aria}>'
+            f'<span class="version-link-id">{version["id"]}</span>'
+            f'<span class="version-link-title">{html.escape(version["title"])}</span>'
+            f'<span class="status {version["status"]}">{version["status"]}</span>'
+            "</a>"
         )
 
     root_prefix = "../.." if current and current not in {"index", "compare"} else ".."
     if current == "index":
         root_prefix = "."
+
+    version_navigation = f"""
+    <aside class="version-sidebar">
+      <p class="sidebar-title">Versions</p>
+      <nav class="version-nav" aria-label="Version navigation">
+        {''.join(nav_items)}
+      </nav>
+    </aside>"""
+
+    if current == "index":
+        page_class = "page-home"
+        page_layout = f"""
+  <div class="readme-layout">
+    <main class="content">
+      <article class="doc home-doc">{body}</article>
+    </main>
+  </div>"""
+    elif current == "compare":
+        page_class = "page-compare"
+        page_layout = f"""
+  <div class="compare-layout">
+    <aside class="file-sidebar">
+      <div class="file-sidebar-header">
+        <div>
+          <p class="sidebar-title">Files</p>
+          <span id="fileSummary" class="file-summary"></span>
+        </div>
+        <div class="file-filter" aria-label="File filter">
+          <button id="changedFilesOnly" type="button" aria-pressed="true">Changed</button>
+          <button id="allFiles" type="button" aria-pressed="false">All</button>
+        </div>
+      </div>
+      <nav id="fileNav" aria-label="File navigation"></nav>
+    </aside>
+    <main class="compare-main">
+      <article class="doc {extra_class}">{body}</article>
+    </main>
+  </div>"""
+    else:
+        page_class = "page-version"
+        page_layout = f"""
+  <div class="docs-layout">
+    {version_navigation}
+    <main class="content">
+      <article class="doc {extra_class}">{body}</article>
+    </main>
+    <aside class="toc-sidebar">
+      <p class="sidebar-title">On this page</p>
+      <nav class="toc-nav" aria-label="On this page">{table_of_contents}</nav>
+    </aside>
+  </div>"""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -224,37 +303,49 @@ def page_shell(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title)} - Torchlet Docs</title>
-  <link rel="stylesheet" href="{versioned(f'{root_prefix}/assets/site.css', asset_version)}">
+  <link rel="stylesheet"
+        href="{versioned(f'{root_prefix}/assets/site.css', asset_version)}">
   {extra_head}
 </head>
-<body>
+<body class="{page_class}">
   <header class="site-header">
     <a class="brand" href="{root_prefix}/">
       <span class="brand-mark">Torchlet</span>
-      <span class="brand-subtitle">LLM inference walkthrough</span>
+      <span class="brand-subtitle">LLM inference implementation notes</span>
     </a>
     <nav class="top-nav" aria-label="Top navigation">
-      <a href="{root_prefix}/">Guide</a>
+      <a href="{root_prefix}/">Overview</a>
       <a href="{root_prefix}/compare/">Compare code</a>
     </nav>
   </header>
-  <div class="layout">
-    <aside class="sidebar">
-      <p class="sidebar-title">Versions</p>
-      <nav class="version-nav" aria-label="Version navigation">
-        {''.join(nav_items)}
-      </nav>
-    </aside>
-    <main class="content">
-      <article class="doc {extra_class}">
-        {body}
-      </article>
-    </main>
-  </div>
+  {page_layout}
   {extra_body}
 </body>
 </html>
 """
+
+
+def add_heading_anchors(body: str) -> tuple[str, str]:
+    headings: list[tuple[str, str]] = []
+    used_ids: dict[str, int] = {}
+
+    def replace_heading(match: re.Match[str]) -> str:
+        rendered_title = match.group(1)
+        plain_title = html.unescape(re.sub(r"<[^>]+>", "", rendered_title))
+        base_id = re.sub(r"[^a-z0-9]+", "-", plain_title.lower()).strip("-")
+        base_id = base_id or "section"
+        occurrence = used_ids.get(base_id, 0)
+        used_ids[base_id] = occurrence + 1
+        heading_id = base_id if occurrence == 0 else f"{base_id}-{occurrence + 1}"
+        headings.append((heading_id, plain_title))
+        return f'<h2 id="{heading_id}">{rendered_title}</h2>'
+
+    anchored = re.sub(r"<h2>(.*?)</h2>", replace_heading, body)
+    links = "".join(
+        f'<a href="#{heading_id}">{html.escape(title)}</a>'
+        for heading_id, title in headings
+    )
+    return anchored, links
 
 
 def build_index(
@@ -272,18 +363,24 @@ def build_index(
         )
     intro_actions = (
         '<div class="doc-actions">'
-        + action_link("versions/v00_full_recompute/", "Start walkthrough")
+        + action_link("versions/v00_full_recompute/", "Open version notes")
         + action_link("compare/", "Open code compare", "secondary-link")
         + "</div>"
     )
+    first_paragraph_end = content.find("</p>") + len("</p>")
+    intro = content[:first_paragraph_end]
+    details = content[first_paragraph_end:]
     body = (
-        content
+        intro
         + intro_actions
-        + '<p class="lede">Each step keeps the previous implementation visible, '
-        + "so the codebase can be read as a sequence of small design pressures.</p>"
+        + '<section class="version-route"><h2>Implementation Versions</h2>'
+        + '<p class="lede">Each Version keeps the preceding implementation visible, '
+        + "so design pressures and structural changes can be examined directly.</p>"
         + '<section class="version-grid">'
         + "".join(cards)
         + "</section>"
+        + "</section>"
+        + details
     )
     (out_dir / "index.html").write_text(
         page_shell(
@@ -299,14 +396,11 @@ def build_index(
 def build_version_pages(
     out_dir: Path, versions: list[dict[str, str]], asset_version: str
 ) -> None:
-    for index, version in enumerate(versions):
+    for version in versions:
         source = VERSION_CONTENT / f"{version['id']}.md"
         body = render_markdown(source.read_text())
-        actions = version_actions(
-            version,
-            versions[index - 1] if index > 0 else None,
-            versions,
-        )
+        body, table_of_contents = add_heading_anchors(body)
+        actions = version_actions(version, versions)
         body = body.replace("</h1>", f"</h1>{actions}", 1)
         body = (
             f'<span class="badge {version["status"]}">{version["status"]}</span>'
@@ -321,30 +415,39 @@ def build_version_pages(
                 versions=versions,
                 current=version["id"],
                 asset_version=asset_version,
+                table_of_contents=table_of_contents,
             )
         )
 
 
-def collect_code() -> dict[str, object]:
-    version_dirs = sorted(
-        path for path in SRC.iterdir() if path.is_dir() and path.name.startswith("v")
-    )
-    versions: list[dict[str, str]] = []
+def collect_code(version_metadata: list[dict[str, str]]) -> dict[str, object]:
+    implemented_versions: list[dict[str, str]] = []
     all_files: set[str] = set()
     code: dict[str, dict[str, str]] = {}
 
-    for version_dir in version_dirs:
-        versions.append({"id": version_dir.name})
-        code[version_dir.name] = {}
+    for version in version_metadata:
+        version_dir = SRC / version["id"]
+        if version["status"] != "implemented" or not version_dir.is_dir():
+            continue
+        implemented_versions.append(
+            {
+                **version,
+                "rationale": read_version_rationale(version["id"]),
+                "important_file": DEFAULT_COMPARE_FILES.get(
+                    version["id"], "layer/gqa.py"
+                ),
+            }
+        )
+        code[version["id"]] = {}
         for path in sorted(version_dir.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
             rel = path.relative_to(version_dir).as_posix()
             all_files.add(rel)
-            code[version_dir.name][rel] = path.read_text()
+            code[version["id"]][rel] = path.read_text()
 
     return {
-        "versions": versions,
+        "versions": implemented_versions,
         "files": sorted(all_files),
         "code": code,
     }
@@ -356,23 +459,39 @@ def build_compare(
     compare_dir = out_dir / "compare"
     compare_dir.mkdir(parents=True, exist_ok=True)
     body = """
-<h1>Compare Code</h1>
-<p class="lede">Choose two implemented versions and one file path. The viewer renders a split diff so adjacent design changes are easy to inspect.</p>
-<div class="compare-toolbar">
-  <label>Left version<select id="leftVersion"></select></label>
-  <label>Right version<select id="rightVersion"></select></label>
-  <label>File<select id="filePath"></select></label>
-</div>
+<header class="compare-heading">
+  <div>
+    <p class="eyebrow">Version comparison</p>
+    <h1>Compare implementation changes</h1>
+    <p class="lede">Inspect the directed code changes from a Base Version to a later Target Version.</p>
+  </div>
+  <div class="pair-navigation" aria-label="Adjacent comparisons">
+    <button id="previousPair" type="button">Previous pair</button>
+    <button id="nextPair" type="button">Next pair</button>
+  </div>
+</header>
+<section class="compare-toolbar" aria-label="Comparison controls">
+  <label>Base Version<select id="baseVersion"></select></label>
+  <span class="direction-arrow" aria-hidden="true">→</span>
+  <label>Target Version<select id="targetVersion"></select></label>
+  <div class="view-toggle" aria-label="Diff view">
+    <button id="splitView" type="button" aria-pressed="true">Split</button>
+    <button id="unifiedView" type="button" aria-pressed="false">Unified</button>
+  </div>
+</section>
+<section class="evolution-summary" id="evolutionSummary" aria-label="Evolution summary"></section>
 <section class="diff-panel">
-  <div class="diff-panel-header">
-    <div>
-      <h2 id="leftTitle"></h2>
-      <span id="leftMeta"></span>
+  <div class="diff-panel-header diff-toolbar">
+    <div class="current-file">
+      <span id="fileStatus" class="file-status"></span>
+      <h2 id="filePathTitle"></h2>
     </div>
     <div class="diff-summary" id="diffSummary"></div>
-    <div>
-      <h2 id="rightTitle"></h2>
-      <span id="rightMeta"></span>
+    <div class="change-navigation">
+      <button id="previousChange" type="button" aria-label="Previous change">↑</button>
+      <span id="changePosition">No changes</span>
+      <button id="nextChange" type="button" aria-label="Next change">↓</button>
+      <button id="expandAll" type="button">Expand all</button>
     </div>
   </div>
   <div class="diff-scroll" id="diffView"></div>
@@ -387,7 +506,10 @@ def build_compare(
             extra_class="compare-page",
             extra_body=(
                 f'<script src="{versioned("../data/code.js", asset_version)}"></script>'
-                f'<script src="{versioned("../assets/compare.js", asset_version)}"></script>'
+                f'<script src="{versioned("../assets/compare-core.js", asset_version)}">'
+                "</script>"
+                f'<script src="{versioned("../assets/compare.js", asset_version)}">'
+                "</script>"
             ),
             asset_version=asset_version,
         )
@@ -405,7 +527,7 @@ def build(out_dir: Path) -> None:
 
     data_dir = out_dir / "data"
     data_dir.mkdir()
-    code_payload = collect_code()
+    code_payload = collect_code(versions)
     asset_version = build_asset_version(code_payload)
     (data_dir / "code.json").write_text(json.dumps(code_payload))
     (data_dir / "code.js").write_text(

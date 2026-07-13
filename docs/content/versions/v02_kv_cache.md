@@ -30,6 +30,6 @@ During decode, the model projects K and V for the new token, appends them to the
 - `layer/gqa.py` for the prefill/decode branch.
 - `llm.py` for generation flow changes.
 
-## Teaching Tradeoff
+## Remaining Tradeoff
 
 The cache is simple and request-owned. That is easy to read, but it does not yet solve scheduling, fixed decode shape, memory fragmentation, or graph capture.

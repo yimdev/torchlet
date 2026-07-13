@@ -1,6 +1,6 @@
 # Torchlet
 
-Torchlet is a small educational LLM inference project. It is not intended to be a production inference framework. Instead, it keeps the core model and kernel paths visible, then uses named version directories to show how the code evolves through optimization steps.
+Torchlet is a small LLM inference reference project. It is not intended to be a production inference framework. Instead, it keeps the core model and kernel paths visible, then uses named version directories to show how the code evolves through optimization steps.
 
 The current implementation uses a Qwen2.5-style decoder-only Transformer as the running example. It includes RoPE, RMSNorm, GQA, SwiGLU FFN, TransformerBlock, weight loading, and a minimal generation loop.
 
@@ -9,7 +9,7 @@ The current implementation uses a Qwen2.5-style decoder-only Transformer as the 
 - Show the main LLM inference data flow with as little code as possible.
 - Compare kernel optimization ideas across small named version directories.
 - Preserve each implementation stage so the structural changes are easy to inspect.
-- Prioritize readability and learning value before adding more aggressive performance work.
+- Prioritize readability and explanatory value before adding more aggressive performance work.
 
 ## Implemented Versions
 
@@ -26,7 +26,8 @@ See [ROADMAP.md](ROADMAP.md) for the full planned version path.
 The repository includes a static documentation site that explains what each
 version introduces, why the change exists, and which files are useful to
 compare. It also includes a browser page for side-by-side code comparison across
-implemented versions.
+implemented Versions. The comparison workspace includes changed-file navigation,
+split and unified diffs, collapsed context, and shareable URL state.
 
 Build it locally with:
 
@@ -76,4 +77,4 @@ python -m torchlet.v03_request_states.llm
 
 ## Status
 
-Torchlet is still an early educational implementation. Future versions can explore continuous batching, paged attention, operator fusion, quantization, and custom CUDA/Triton kernels.
+Torchlet is still an early reference implementation. Future Versions can explore continuous batching, paged attention, operator fusion, quantization, and custom CUDA/Triton kernels.
