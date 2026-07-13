@@ -832,6 +832,10 @@ select {
   background: var(--surface);
 }
 
+.diff-scroll.split-scroll {
+  overflow-x: hidden;
+}
+
 .diff-table {
   width: 100%;
   border-collapse: separate;
@@ -843,7 +847,8 @@ select {
 }
 
 .diff-table.diff-split {
-  min-width: 1160px;
+  min-width: 100%;
+  table-layout: fixed;
 }
 
 .diff-table.diff-unified {
@@ -889,9 +894,22 @@ select {
   font-size: inherit;
 }
 
-.diff-split .diff-code {
-  width: 50%;
-  min-width: 460px;
+.diff-split .diff-col-line {
+  width: 48px;
+}
+
+.diff-split .diff-col-marker {
+  width: 20px;
+}
+
+.diff-split .diff-col-code {
+  width: calc(50% - 68px);
+}
+
+.diff-split td.diff-code {
+  width: auto;
+  min-width: 0;
+  padding: 0;
 }
 
 .diff-unified .diff-code {
@@ -900,8 +918,6 @@ select {
 }
 
 .diff-line-no {
-  position: sticky;
-  z-index: 2;
   width: 48px;
   min-width: 48px;
   padding-right: 8px;
@@ -920,17 +936,35 @@ select {
   user-select: none;
 }
 
-.diff-split .diff-line-no.base,
-.diff-unified .diff-line-no.base {
-  left: 0;
+.diff-code-clip {
+  width: 100%;
+  overflow: hidden;
+  padding: 0 8px;
 }
 
-.diff-unified .diff-line-no.target {
-  left: 48px;
+.diff-code-content {
+  display: inline-block;
+  min-width: max-content;
+  transform: translateX(var(--diff-code-offset, 0));
+  will-change: transform;
+}
+
+.diff-horizontal-scroll {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  height: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--border-muted);
+  background: var(--surface);
+}
+
+.diff-horizontal-scroll-space {
+  height: 1px;
 }
 
 .diff-split .diff-line-no.target {
-  left: 50%;
   border-left: 1px solid var(--border-default);
 }
 

@@ -93,6 +93,24 @@ class DocsBuildTest(unittest.TestCase):
         self.assertIn("padding", payload["versions"][1]["rationale"].lower())
         self.assertNotIn("v09_triton_basics", payload["code"])
 
+    def test_split_diff_keeps_gutters_fixed_while_code_scrolls(self):
+        build_docs = load_build_docs_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            out_dir = Path(temp_dir) / "site"
+            build_docs.build(out_dir)
+            css = (out_dir / "assets" / "site.css").read_text()
+            compare_js = (out_dir / "assets" / "compare.js").read_text()
+
+        line_number_rule = css.split(".diff-line-no {", 1)[1].split("}", 1)[0]
+        self.assertNotIn("position: sticky", line_number_rule)
+        split_table_rule = css.split(".diff-table.diff-split {", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("table-layout: fixed", split_table_rule)
+        self.assertIn("setupSplitHorizontalScroll", compare_js)
+        self.assertIn("diff-code-clip", compare_js)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -66,6 +66,7 @@
     currentFile: null,
     currentHunk: requestedHunk,
     expandedFolds: new Set(),
+    horizontalOffset: 0,
     showAllFiles: false,
     view:
       params.get("view") === "unified" ||
@@ -245,6 +246,7 @@
           (file) => file.path === button.dataset.file
         );
         state.currentHunk = 0;
+        state.horizontalOffset = 0;
         state.expandedFolds.clear();
         renderFileNav();
         renderDiff();
@@ -360,6 +362,13 @@
     return `<tr class="diff-fold"><td colspan="${columnCount}"><button type="button" data-fold="${row.id}">Expand ${row.count} unchanged lines</button></td></tr>`;
   }
 
+  function splitCodeCell(row, side) {
+    return `<td class="diff-code ${side}"><div class="diff-code-clip"><code class="diff-code-content">${lineCode(
+      row,
+      side
+    )}</code></div></td>`;
+  }
+
   function renderSplitRows(rows) {
     return rows
       .map((row) => {
@@ -370,10 +379,10 @@
         return `<tr class="diff-row diff-${row.kind}"${hunkAttribute(row)}>
           <td class="diff-line-no base">${row.baseNo || ""}</td>
           <td class="diff-marker base">${baseMarker}</td>
-          <td class="diff-code base"><code>${lineCode(row, "base")}</code></td>
+          ${splitCodeCell(row, "base")}
           <td class="diff-line-no target">${row.targetNo || ""}</td>
           <td class="diff-marker target">${targetMarker}</td>
-          <td class="diff-code target"><code>${lineCode(row, "target")}</code></td>
+          ${splitCodeCell(row, "target")}
         </tr>`;
       })
       .join("");
@@ -413,6 +422,42 @@
       .join("");
   }
 
+  function applySplitHorizontalOffset(scroller) {
+    state.horizontalOffset = scroller.scrollLeft;
+    elements.diffView.style.setProperty(
+      "--diff-code-offset",
+      `${-state.horizontalOffset}px`
+    );
+  }
+
+  function setupSplitHorizontalScroll() {
+    const scroller = elements.diffView.querySelector(".diff-horizontal-scroll");
+    const spacer = elements.diffView.querySelector(
+      ".diff-horizontal-scroll-space"
+    );
+    if (!scroller || !spacer) return;
+
+    scroller.addEventListener("scroll", () => {
+      applySplitHorizontalOffset(scroller);
+    });
+
+    window.requestAnimationFrame(() => {
+      const clips = Array.from(
+        elements.diffView.querySelectorAll(".diff-code-clip")
+      );
+      const maxOverflow = clips.reduce((maximum, clip) => {
+        const content = clip.querySelector(".diff-code-content");
+        return Math.max(
+          maximum,
+          content ? content.scrollWidth + 16 - clip.clientWidth : 0
+        );
+      }, 0);
+      spacer.style.width = `${scroller.clientWidth + maxOverflow}px`;
+      scroller.scrollLeft = Math.min(state.horizontalOffset, maxOverflow);
+      applySplitHorizontalOffset(scroller);
+    });
+  }
+
   function renderDiff() {
     const file = state.currentFile;
     if (!file) {
@@ -448,7 +493,20 @@
           )}</th></tr>`;
     const renderedRows =
       state.view === "split" ? renderSplitRows(rows) : renderUnifiedRows(rows);
-    elements.diffView.innerHTML = `<table class="diff-table diff-${state.view}"><thead>${tableHeading}</thead><tbody>${renderedRows}</tbody></table>`;
+    const splitColumns =
+      state.view === "split"
+        ? `<colgroup>
+            <col class="diff-col-line"><col class="diff-col-marker"><col class="diff-col-code">
+            <col class="diff-col-line"><col class="diff-col-marker"><col class="diff-col-code">
+          </colgroup>`
+        : "";
+    const horizontalScroll =
+      state.view === "split"
+        ? `<div class="diff-horizontal-scroll" aria-label="Code horizontal scroll"><div class="diff-horizontal-scroll-space"></div></div>`
+        : "";
+    elements.diffView.classList.toggle("split-scroll", state.view === "split");
+    elements.diffView.classList.toggle("unified-scroll", state.view === "unified");
+    elements.diffView.innerHTML = `<table class="diff-table diff-${state.view}">${splitColumns}<thead>${tableHeading}</thead><tbody>${renderedRows}</tbody></table>${horizontalScroll}`;
 
     for (const button of elements.diffView.querySelectorAll("[data-fold]")) {
       button.addEventListener("click", () => {
@@ -456,6 +514,7 @@
         renderDiff();
       });
     }
+    if (state.view === "split") setupSplitHorizontalScroll();
     updateViewControls();
     updateUrl();
   }
@@ -511,6 +570,7 @@
       state.showAllFiles = true;
     }
     state.currentHunk = hunkIndex;
+    state.horizontalOffset = 0;
     state.expandedFolds.clear();
     renderVersionControls();
     renderEvolutionSummary();
@@ -562,11 +622,13 @@
   });
   elements.splitView.addEventListener("click", () => {
     state.view = "split";
+    state.horizontalOffset = 0;
     saveView(state.view);
     renderDiff();
   });
   elements.unifiedView.addEventListener("click", () => {
     state.view = "unified";
+    state.horizontalOffset = 0;
     saveView(state.view);
     renderDiff();
   });
@@ -606,6 +668,22 @@
     }
     renderDiff();
   });
+  elements.diffView.addEventListener(
+    "wheel",
+    (event) => {
+      if (state.view !== "split") return;
+      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+      if (!delta) return;
+      const scroller = elements.diffView.querySelector(
+        ".diff-horizontal-scroll"
+      );
+      if (!scroller) return;
+      const previousOffset = scroller.scrollLeft;
+      scroller.scrollLeft += delta;
+      if (scroller.scrollLeft !== previousOffset) event.preventDefault();
+    },
+    { passive: false }
+  );
   document.addEventListener("keydown", (event) => {
     if (event.target.matches("input, select, textarea, button")) return;
     if (event.key === "[") moveToHunk(state.currentHunk - 1);
