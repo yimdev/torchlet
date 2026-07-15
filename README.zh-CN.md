@@ -6,6 +6,8 @@ Torchlet 是一个小型 LLM 推理参考项目。它不以生产级推理框架
 
 当前实现以 Qwen2.5 风格的纯解码器 Transformer 为贯穿示例，包含 RoPE、RMSNorm、GQA、SwiGLU FFN、TransformerBlock、权重加载和最小生成循环。
 
+[**打开在线网站**](https://yimdev.github.io/torchlet/)
+
 ## 目标
 
 - 用尽可能少的代码展示 LLM 推理主流程。
