@@ -9,6 +9,7 @@ without Node, Ruby, or third-party Python packages.
 - `docs/content/index.md`: landing page copy.
 - `docs/content/versions.json`: ordered version metadata used for navigation.
 - `docs/content/versions/*.md`: one implementation note per roadmap Version.
+- `docs/content/zh-CN/`: Chinese metadata and translated implementation notes.
 - `docs/assets/site.css`: the documentation visual system.
 - `docs/assets/compare-core.js`: DOM-free comparison model and diff calculation.
 - `docs/assets/compare.js`: browser-side Compare workspace controller.
@@ -30,9 +31,9 @@ conceptual changes, not just code changes.
 
 ## Code Compare Page
 
-The build script scans `src/torchlet/v*/**/*.py`, stores the source in
-`docs/_site/data/code.js`, and creates a static compare page at
-`docs/_site/compare/index.html`.
+The build script scans `src/torchlet/v*/**/*.py`, stores the source in each
+locale's `data/code.js`, and creates static compare pages at
+`docs/_site/compare/index.html` and `docs/_site/zh/compare/index.html`.
 
 The page compares a Base Version to a later Target Version. It provides a
 changed-file navigator, split and unified views, word-level highlights, folded
@@ -45,7 +46,8 @@ in only one Version, the missing side is shown as pure additions or deletions.
 python3 tools/build_docs.py
 ```
 
-Then open `docs/_site/index.html` in a browser.
+Then open `docs/_site/index.html` in a browser. The Chinese site is generated at
+`docs/_site/zh/index.html`; language links preserve the current page.
 
 ## Deploy On GitHub Pages
 

@@ -63,18 +63,12 @@
     "id": "v09_triton_basics",
     "title": "Triton Basics",
     "theme": "Introduce a small custom kernel before paged attention",
-    "status": "planned"
+    "status": "implemented"
   },
   {
     "id": "v10_triton_paged_gqa",
-    "title": "Triton Paged GQA",
-    "theme": "Move paged attention from Python loops to Triton",
-    "status": "planned"
-  },
-  {
-    "id": "v11_cuda_graph_triton_paged",
-    "title": "CUDA Graph + Triton Paged",
-    "theme": "Replay the fixed Triton paged decode path",
+    "title": "Triton Paged GQA + CUDA Graph",
+    "theme": "Move paged attention to Triton and replay the fixed decode path",
     "status": "planned"
   }
 ]

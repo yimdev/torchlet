@@ -22,7 +22,7 @@ class LLM:
         logger.info("pytorch info: \n%s", get_backend_info())
 
         if not torch.cuda.is_available():
-            raise RuntimeError("v07_cuda_graph requires CUDA")
+            raise RuntimeError("CUDA is required")
         self.device = torch.device("cuda")
 
         model_dir = Path(snapshot_download(model_id))

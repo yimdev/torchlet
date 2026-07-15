@@ -26,7 +26,7 @@ class Engine:
     ):
         device = torch.device(device)
         if device.type != "cuda":
-            raise RuntimeError("v07_cuda_graph requires CUDA")
+            raise RuntimeError("CUDA is required")
 
         config = model.config
         hidden_size = _config_get(config, "hidden_size")

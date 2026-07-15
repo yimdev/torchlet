@@ -32,8 +32,7 @@ v07_cuda_graph            CUDA Graph replay for static decode
 
 v08_paged_gqa_py          Block pool + block table + PyTorch paged GQA
 v09_triton_basics         Triton basics with a small GQA-related kernel
-v10_triton_paged_gqa      Triton paged GQA attention
-v11_cuda_graph_triton_paged  CUDA Graph replay for Triton paged decode
+v10_triton_paged_gqa      Triton paged GQA + CUDA Graph replay
 ```
 
 The order is meant to follow the inference data flow:
@@ -47,13 +46,13 @@ The order is meant to follow the inference data flow:
 - `v08_paged_gqa_py` moves from slot-owned contiguous KV cache to a block pool,
   block table, and a clear PyTorch paged GQA implementation. It can keep Python
   loops so the logical-block to physical-block mapping stays visible.
-- `v09_triton_basics` to `v10_triton_paged_gqa` move the same paged GQA idea
-  from readable PyTorch code to Triton kernels.
-- `v11_cuda_graph_triton_paged` captures the Triton paged decode path after the
-  block-table layout and kernel launch shape are stable.
+- `v09_triton_basics` introduces Triton with smaller kernels.
+- `v10_triton_paged_gqa` moves paged GQA from readable PyTorch code to Triton,
+  then captures the fixed Triton decode path after the block-table layout and
+  kernel launch shape are stable.
 
 CUDA Graph appears twice for two separate lessons. `v07_cuda_graph` shows the
-basic static decode capture before paged KV exists. `v11_cuda_graph_triton_paged`
+basic static decode capture before paged KV exists. `v10_triton_paged_gqa`
 returns to graph replay after paged attention has moved into a fixed Triton
 decode path.
 
@@ -73,13 +72,13 @@ If the core single-GPU roadmap is complete, TP can become a second learning
 track:
 
 ```text
-v12_tp_basics        Tensor parallel basics: rank/world_size/process group
-v13_tp_linear        Sharded linear layers: ColumnParallelLinear and RowParallelLinear
-v14_tp_ffn           Tensor-parallel Qwen2.5 SwiGLU FFN
-v15_tp_gqa_proj      Tensor-parallel Qwen2.5 GQA projections
-v16_tp_kv_cache      Tensor-parallel KV cache by KV heads
-v17_tp_decode        Tensor-parallel full decode step
-v18_tp_cuda_graph    Tensor-parallel CUDA Graph constraints
+v11_tp_basics        Tensor parallel basics: rank/world_size/process group
+v12_tp_linear        Sharded linear layers: ColumnParallelLinear and RowParallelLinear
+v13_tp_ffn           Tensor-parallel Qwen2.5 SwiGLU FFN
+v14_tp_gqa_proj      Tensor-parallel Qwen2.5 GQA projections
+v15_tp_kv_cache      Tensor-parallel KV cache by KV heads
+v16_tp_decode        Tensor-parallel full decode step
+v17_tp_cuda_graph    Tensor-parallel CUDA Graph constraints
 ```
 
 This extension should stay narrow:

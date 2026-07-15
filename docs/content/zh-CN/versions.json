@@ -1,0 +1,62 @@
+[
+  {
+    "id": "v00_full_recompute",
+    "title": "完整重算",
+    "theme": "单请求 Qwen2.5 基线"
+  },
+  {
+    "id": "v01_0_ragged_batch",
+    "title": "不规则批处理",
+    "theme": "使用 req_indptr 批处理变长请求"
+  },
+  {
+    "id": "v01_1_split_gqa",
+    "title": "拆分 GQA",
+    "theme": "在引入缓存前明确注意力计算阶段"
+  },
+  {
+    "id": "v02_kv_cache",
+    "title": "KV 缓存",
+    "theme": "分离预填充和解码，避免重复计算历史状态"
+  },
+  {
+    "id": "v03_request_states",
+    "title": "请求状态",
+    "theme": "显式跟踪等待、运行和完成状态"
+  },
+  {
+    "id": "v04_continuous_batching",
+    "title": "连续批处理",
+    "theme": "在解码过程中动态接纳和移除请求"
+  },
+  {
+    "id": "v05_decode_slots",
+    "title": "解码槽位",
+    "theme": "为解码请求提供稳定的槽位标识"
+  },
+  {
+    "id": "v06_static_buffers",
+    "title": "静态缓冲区",
+    "theme": "为图捕获准备固定的解码输入"
+  },
+  {
+    "id": "v07_cuda_graph",
+    "title": "CUDA Graph",
+    "theme": "捕获并重放静态解码路径"
+  },
+  {
+    "id": "v08_paged_gqa_py",
+    "title": "PyTorch 分页 GQA",
+    "theme": "使用块池和块表管理 KV 缓存"
+  },
+  {
+    "id": "v09_triton_basics",
+    "title": "Triton 基础",
+    "theme": "在分页注意力前引入小型自定义 kernel"
+  },
+  {
+    "id": "v10_triton_paged_gqa",
+    "title": "Triton 分页 GQA + CUDA Graph",
+    "theme": "将分页注意力迁移到 Triton，并重放固定解码路径"
+  }
+]

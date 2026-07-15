@@ -2,7 +2,7 @@
 
 ## What This Version Introduces
 
-This planned version introduces Triton with a small GQA-adjacent kernel before replacing the full attention path.
+This version introduces Triton with small kernels before replacing the full attention path.
 
 The goal is to explain Triton execution structure without mixing in the full complexity of paged attention.
 
@@ -23,7 +23,7 @@ The implementation keeps these ideas visible:
 
 ## Files To Compare
 
-- The new Triton kernel file once implemented.
+- The new Triton kernel files.
 - The PyTorch reference function it is checked against.
 - Any test or smoke script that compares outputs.
 

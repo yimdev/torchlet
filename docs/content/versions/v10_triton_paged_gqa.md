@@ -2,13 +2,13 @@
 
 ## What This Version Introduces
 
-This planned version moves paged GQA attention from readable PyTorch into Triton.
+This planned version moves paged GQA attention from readable PyTorch into Triton and captures the fixed decode path with CUDA Graph.
 
-The block table and paged KV cache idea should remain the same, but the hot attention loop moves into a custom kernel.
+The block table and paged KV cache idea should remain the same, but the hot attention loop moves into a custom kernel whose decode launch can be replayed.
 
 ## Why Introduce It
 
-The PyTorch version makes the memory mapping clear, but Python loops and generic tensor operations are not the final form for fast decode attention. Triton can express the fixed access pattern more directly.
+The PyTorch version makes the memory mapping clear, but Python loops and generic tensor operations are not the final form for fast decode attention. Triton can express the fixed access pattern more directly, while CUDA Graph avoids repeatedly paying Python and launch overhead in the decode loop.
 
 ## Core Principle
 
@@ -20,12 +20,23 @@ The important mental model is:
 request slot + logical block -> physical block -> K/V tile
 ```
 
+The graph captures a fixed Triton decode launch shape and fixed tensor addresses. Runtime changes should happen by mutating existing tensors:
+
+- Input token buffer.
+- Position buffer.
+- Active mask.
+- Block table contents.
+- Cache contents.
+
+The captured operations stay the same; the data they read changes in place.
+
 ## Files To Compare
 
 - The Triton paged GQA kernel against `v08_paged_gqa_py/layer/gqa.py`.
+- The engine and CUDA Graph path against `v07_cuda_graph/engine.py`.
 - The cache layout against `v08_paged_gqa_py/kvcache.py`.
 - The scheduler block table construction against the v08 version.
 
 ## Remaining Tradeoff
 
-The kernel should initially optimize for correctness and shape clarity. Aggressive fusion and autotuning can wait until the paged attention mapping is obvious.
+This is the most constraint-heavy core version. The implementation should keep correctness and shape clarity ahead of aggressive fusion and autotuning, and the documentation should distinguish constraints from CUDA Graph, Triton launch shape, and paged cache layout.

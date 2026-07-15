@@ -4,6 +4,37 @@
   const payload = window.TORCHLET_CODE;
   const core = window.TorchletCompareCore;
   const params = new URLSearchParams(window.location.search);
+  const messages = {
+    dataUnavailable: "Data unavailable",
+    comparisonDataDidNotLoad: "Comparison data did not load.",
+    evolutionSummary: "Evolution summary",
+    openVersionNotes: "Open Version notes",
+    stagesInComparison: "{count} implementation stages in this comparison",
+    openTargetVersionNotes: "Open Target Version notes",
+    statusAdded: "Added",
+    statusDeleted: "Deleted",
+    statusModified: "Modified",
+    statusUnchanged: "Unchanged",
+    root: "Root",
+    fileSummary: "{changed} changed · {total} total",
+    noCodeChanges: "No code changes between these Versions.",
+    expandUnchanged: "Expand {count} unchanged lines",
+    noChangedFiles: "No changed files",
+    changesCount: "{count} changes",
+    sameCode: "These Versions contain the same code.",
+    codeHorizontalScroll: "Code horizontal scroll",
+    changePosition: "{current} / {total} changes",
+    noChanges: "No changes",
+    ...(window.TORCHLET_I18N || {}),
+  };
+
+  function message(key, values = {}) {
+    let value = messages[key];
+    for (const [name, replacement] of Object.entries(values)) {
+      value = value.replaceAll(`{${name}}`, String(replacement));
+    }
+    return value;
+  }
 
   const elements = {
     allFiles: document.querySelector("#allFiles"),
@@ -28,9 +59,9 @@
   };
 
   if (!payload || !core) {
-    elements.diffSummary.textContent = "Data unavailable";
+    elements.diffSummary.textContent = message("dataUnavailable");
     elements.diffView.innerHTML =
-      '<div class="empty-code">Comparison data did not load.</div>';
+      `<div class="empty-code">${message("comparisonDataDidNotLoad")}</div>`;
     return;
   }
 
@@ -142,12 +173,12 @@
     if (stages.length === 1) {
       elements.evolutionSummary.innerHTML = `
         <div>
-          <span class="summary-label">Evolution summary</span>
+          <span class="summary-label">${message("evolutionSummary")}</span>
           <strong>${escapeHtml(target.title)}</strong>
           <span class="summary-theme">${escapeHtml(target.theme)}</span>
           <p>${escapeHtml(rationale)}</p>
         </div>
-        <a href="${targetLink}">Open Version notes</a>`;
+        <a href="${targetLink}">${message("openVersionNotes")}</a>`;
       return;
     }
 
@@ -161,18 +192,18 @@
       .join("");
     elements.evolutionSummary.innerHTML = `
       <details>
-        <summary>${stages.length} implementation stages in this comparison</summary>
+        <summary>${message("stagesInComparison", { count: stages.length })}</summary>
         <ol>${stageLinks}</ol>
       </details>
-      <a href="${targetLink}">Open Target Version notes</a>`;
+      <a href="${targetLink}">${message("openTargetVersionNotes")}</a>`;
   }
 
   function statusLabel(status) {
     return {
-      added: "Added",
-      deleted: "Deleted",
-      modified: "Modified",
-      unchanged: "Unchanged",
+      added: message("statusAdded"),
+      deleted: message("statusDeleted"),
+      modified: message("statusModified"),
+      unchanged: message("statusUnchanged"),
     }[status];
   }
 
@@ -180,7 +211,7 @@
     const groups = new Map();
     for (const file of files) {
       const separator = file.path.lastIndexOf("/");
-      const directory = separator === -1 ? "Root" : file.path.slice(0, separator);
+      const directory = separator === -1 ? message("root") : file.path.slice(0, separator);
       const name = separator === -1 ? file.path : file.path.slice(separator + 1);
       if (!groups.has(directory)) {
         groups.set(directory, []);
@@ -198,7 +229,10 @@
     const changedCount = allFiles.filter(
       (file) => file.status !== "unchanged"
     ).length;
-    elements.fileSummary.textContent = `${changedCount} changed · ${allFiles.length} total`;
+    elements.fileSummary.textContent = message("fileSummary", {
+      changed: changedCount,
+      total: allFiles.length,
+    });
     elements.changedFilesOnly.setAttribute(
       "aria-pressed",
       String(!state.showAllFiles)
@@ -207,7 +241,7 @@
 
     if (visibleFiles.length === 0) {
       elements.fileNav.innerHTML =
-        '<p class="file-empty">No code changes between these Versions.</p>';
+        `<p class="file-empty">${message("noCodeChanges")}</p>`;
       return;
     }
 
@@ -359,7 +393,7 @@
   }
 
   function renderFoldRow(row, columnCount) {
-    return `<tr class="diff-fold"><td colspan="${columnCount}"><button type="button" data-fold="${row.id}">Expand ${row.count} unchanged lines</button></td></tr>`;
+    return `<tr class="diff-fold"><td colspan="${columnCount}"><button type="button" data-fold="${row.id}">${message("expandUnchanged", { count: row.count })}</button></td></tr>`;
   }
 
   function splitCodeCell(row, side) {
@@ -461,11 +495,11 @@
   function renderDiff() {
     const file = state.currentFile;
     if (!file) {
-      elements.filePathTitle.textContent = "No changed files";
+      elements.filePathTitle.textContent = message("noChangedFiles");
       elements.fileStatus.textContent = "";
-      elements.diffSummary.textContent = "0 changes";
+      elements.diffSummary.textContent = message("changesCount", { count: 0 });
       elements.diffView.innerHTML =
-        '<div class="empty-code">These Versions contain the same code.</div>';
+        `<div class="empty-code">${message("sameCode")}</div>`;
       updateUrl();
       return;
     }
@@ -502,7 +536,7 @@
         : "";
     const horizontalScroll =
       state.view === "split"
-        ? `<div class="diff-horizontal-scroll" aria-label="Code horizontal scroll"><div class="diff-horizontal-scroll-space"></div></div>`
+        ? `<div class="diff-horizontal-scroll" aria-label="${message("codeHorizontalScroll")}"><div class="diff-horizontal-scroll-space"></div></div>`
         : "";
     elements.diffView.classList.toggle("split-scroll", state.view === "split");
     elements.diffView.classList.toggle("unified-scroll", state.view === "unified");
@@ -522,8 +556,11 @@
   function renderChangePosition() {
     const hunkCount = state.currentFile ? state.currentFile.hunks.length : 0;
     elements.changePosition.textContent = hunkCount
-      ? `${state.currentHunk + 1} / ${hunkCount} changes`
-      : "No changes";
+      ? message("changePosition", {
+          current: state.currentHunk + 1,
+          total: hunkCount,
+        })
+      : message("noChanges");
     elements.previousChange.disabled = hunkCount === 0 || state.currentHunk === 0;
     elements.nextChange.disabled =
       hunkCount === 0 || state.currentHunk === hunkCount - 1;

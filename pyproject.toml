@@ -12,6 +12,7 @@ dependencies = [
     "modelscope",
     "safetensors",
     "torch>=2.0",
+    "triton; platform_system == 'Linux'",
     "transformers",
 ]
 
